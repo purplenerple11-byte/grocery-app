@@ -131,3 +131,27 @@ test('DB round-trip: init, put, getAll, delete, replaceAll', async () => {
   assertEqual(all.length, 1);
   assertEqual(all[0].id, a.id);
 });
+
+test('DB falls back to memory when IndexedDB unavailable', async () => {
+  const realOpen = indexedDB.open;
+  indexedDB.open = () => { throw new Error('unavailable'); };
+  await DB.init('grocery-fallback');
+  indexedDB.open = realOpen;
+  assertEqual(DB.persistent, false);
+
+  const a = Store.createItem('A'), b = Store.createItem('B');
+  await DB.put(a);
+  await DB.put(b);
+  assertEqual((await DB.getAll()).length, 2);
+  await DB.delete(a.id);
+  const remaining = await DB.getAll();
+  assertEqual(remaining.length, 1);
+  assertEqual(remaining[0].id, b.id);
+  await DB.replaceAll([a]);
+  assertEqual((await DB.getAll())[0].id, a.id);
+
+  // restore persistent mode so later tests are unaffected
+  DB.persistent = true;
+  DB._mem = null;
+  await DB.init('grocery-test');
+});
