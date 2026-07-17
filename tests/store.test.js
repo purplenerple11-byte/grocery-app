@@ -65,3 +65,33 @@ test('adjustStock floors at 0', () => {
   assertEqual(Store.adjustStock(it, 3).stock, 5);
   assertEqual(Store.adjustStock(it, -9).stock, 0);
 });
+
+test('completeTrip restocks tracked items by quantity bought', () => {
+  const eggs = { ...Store.createItem('Eggs', { tracked: true, stock: 0, onList: true, listQty: 2 }), checked: true };
+  const [after] = Store.completeTrip([eggs]);
+  assertEqual(after.stock, 2, 'stock 0 + bought 2 = 2');
+  assertEqual(after.onList, false);
+  assertEqual(after.checked, false);
+  assertEqual(after.listQty, 1);
+});
+
+test('completeTrip deletes checked one-offs, keeps unchecked items', () => {
+  const oneOff = { ...Store.createItem('Birthday candles', { onList: true }), checked: true };
+  const unbought = Store.createItem('Milk', { tracked: true, onList: true, listQty: 1 });
+  const idle = Store.createItem('Rice', { tracked: true, stock: 3 });
+  const result = Store.completeTrip([oneOff, unbought, idle]);
+  assertEqual(result.length, 2, 'one-off removed');
+  assertEqual(result[0].id, unbought.id);
+  assertEqual(result[0].onList, true, 'unbought stays on list');
+  assertEqual(result[1].stock, 3, 'idle untouched');
+});
+
+test('outLowCounts counts tracked items only', () => {
+  const items = [
+    Store.createItem('A', { tracked: true, stock: 0 }),            // out
+    Store.createItem('B', { tracked: true, stock: 1, lowAt: 1 }),  // low
+    Store.createItem('C', { tracked: true, stock: 9 }),            // stocked
+    Store.createItem('D', { stock: 0 })                            // untracked, ignored
+  ];
+  assertEqual(Store.outLowCounts(items), { out: 1, low: 1 });
+});

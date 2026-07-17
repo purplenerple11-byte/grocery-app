@@ -44,5 +44,29 @@ const Store = {
 
   adjustStock(item, delta) {
     return Store.update(item, { stock: Math.max(0, item.stock + delta) });
+  },
+
+  completeTrip(items) {
+    const kept = [];
+    for (const it of items) {
+      if (!(it.onList && it.checked)) { kept.push(it); continue; }
+      if (!it.tracked) continue; // bought one-off: gone
+      kept.push(Store.update(it, {
+        stock: it.stock + it.listQty,
+        onList: false, checked: false, listQty: 1
+      }));
+    }
+    return kept;
+  },
+
+  outLowCounts(items) {
+    let out = 0, low = 0;
+    for (const it of items) {
+      if (!it.tracked) continue;
+      const s = Store.deriveStatus(it);
+      if (s === 'out') out++;
+      else if (s === 'low') low++;
+    }
+    return { out, low };
   }
 };
