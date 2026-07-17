@@ -26,5 +26,23 @@ const Store = {
 
   update(item, changes) {
     return { ...item, ...changes, updatedAt: Date.now() };
+  },
+
+  toggleOnList(item) {
+    return item.onList
+      ? Store.update(item, { onList: false, checked: false, listQty: 1 })
+      : Store.update(item, { onList: true });
+  },
+
+  setChecked(item, checked) {
+    return Store.update(item, { checked });
+  },
+
+  adjustListQty(item, delta) {
+    return Store.update(item, { listQty: Math.max(1, item.listQty + delta) });
+  },
+
+  adjustStock(item, delta) {
+    return Store.update(item, { stock: Math.max(0, item.stock + delta) });
   }
 };

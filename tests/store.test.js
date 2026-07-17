@@ -37,3 +37,31 @@ test('update merges without mutating and bumps updatedAt', () => {
   assertEqual(it.stock, 0, 'original untouched');
   assert(changed.updatedAt >= before, 'updatedAt bumped');
 });
+
+test('toggleOnList on and off', () => {
+  const it = Store.createItem('Milk', { tracked: true });
+  const on = Store.toggleOnList(it);
+  assertEqual(on.onList, true);
+  const off = Store.toggleOnList({ ...on, checked: true, listQty: 3 });
+  assertEqual(off.onList, false);
+  assertEqual(off.checked, false, 'check cleared when removed from list');
+  assertEqual(off.listQty, 1, 'qty reset when removed from list');
+});
+
+test('setChecked toggles checked', () => {
+  const it = Store.createItem('Milk', { onList: true });
+  assertEqual(Store.setChecked(it, true).checked, true);
+  assertEqual(Store.setChecked(Store.setChecked(it, true), false).checked, false);
+});
+
+test('adjustListQty floors at 1', () => {
+  const it = Store.createItem('Milk', { onList: true });
+  assertEqual(Store.adjustListQty(it, 2).listQty, 3);
+  assertEqual(Store.adjustListQty(it, -5).listQty, 1);
+});
+
+test('adjustStock floors at 0', () => {
+  const it = Store.createItem('Eggs', { tracked: true, stock: 2 });
+  assertEqual(Store.adjustStock(it, 3).stock, 5);
+  assertEqual(Store.adjustStock(it, -9).stock, 0);
+});
