@@ -100,7 +100,7 @@ Single page, two layers:
   - Checked tracked items: removed from list, `stock += listQty` (eggs at 0, buy 2 → stock 2), `listQty` resets to 1.
   - Checked untracked items: deleted.
   - Unchecked items stay on the list untouched.
-- Swipe-to-delete (or a delete affordance in an edit mode) removes a row without buying it.
+- Long-press a row to open item details, which includes removing it from the list or deleting it entirely.
 
 ### Inventory sheet (swipe up from bottom)
 
@@ -109,7 +109,8 @@ Single page, two layers:
 - Each tile: item name at top (serif, up to 2 lines), bottom row with status dot + **stock count**.
 - **Tap tile = toggle on/off the shopping list.** On-list tiles show a clay corner ribbon cut at 45° across the top-right with a ✓ (may slightly overlap the name — accepted).
 - **Tap the count** (bottom-left area) opens a small −/+ stepper to adjust stock by hand without toggling the list.
-- Long-press (or an edit affordance) opens item details: rename, category, unit, low threshold, untrack/delete.
+- Long-press a tile opens item details: rename, category, unit, low threshold, untrack/delete.
+- An "+ Add" affordance at the top of the sheet creates a new tracked item directly in inventory (name, category, starting stock).
 
 ## Data flow: the shopping-trip loop
 
