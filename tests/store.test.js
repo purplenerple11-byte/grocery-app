@@ -176,3 +176,73 @@ test('update preserves untouched fields', () => {
   assertEqual(changed.unit, 'gal');
   assertEqual(changed.id, it.id);
 });
+
+test('createItem starts with empty price history', () => {
+  assertEqual(Store.createItem('Milk').prices, []);
+});
+
+test('addPrice prepends newest-first and trims store name', () => {
+  let it = Store.createItem('Milk', { tracked: true });
+  it = Store.addPrice(it, 3.49, '  Trader Joes ');
+  it = Store.addPrice(it, 3.99, 'Safeway');
+  assertEqual(it.prices.length, 2);
+  assertEqual(it.prices[0].price, 3.99);
+  assertEqual(it.prices[0].store, 'Safeway');
+  assertEqual(it.prices[1].store, 'Trader Joes');
+  assert(typeof it.prices[0].at === 'number', 'entry timestamped');
+});
+
+test('lastPrice returns newest entry or null', () => {
+  const fresh = Store.createItem('Milk');
+  assertEqual(Store.lastPrice(fresh), null);
+  const priced = Store.addPrice(fresh, 2.5, 'Aldi');
+  assertEqual(Store.lastPrice(priced).price, 2.5);
+});
+
+test('storeNames collects unique sorted stores across items', () => {
+  const a = Store.addPrice(Store.createItem('Milk'), 3, 'Safeway');
+  const b = Store.addPrice(Store.addPrice(Store.createItem('Eggs'), 4, 'Aldi'), 5, 'Safeway');
+  const c = Store.createItem('Rice'); // no prices
+  assertEqual(Store.storeNames([a, b, c]), ['Aldi', 'Safeway']);
+});
+
+test('completeTrip records prices for bought items only', () => {
+  const eggs = { ...Store.createItem('Eggs', { tracked: true, stock: 0, onList: true, listQty: 2 }), checked: true };
+  const milk = Store.createItem('Milk', { tracked: true, stock: 1, onList: true }); // unchecked
+  const result = Store.completeTrip([eggs, milk], { store: 'Aldi', prices: { [eggs.id]: 4.25, [milk.id]: 9.99 } });
+  const boughtEggs = result.find((i) => i.id === eggs.id);
+  assertEqual(boughtEggs.stock, 2, 'still restocks by qty bought');
+  assertEqual(boughtEggs.prices.length, 1);
+  assertEqual(boughtEggs.prices[0].price, 4.25);
+  assertEqual(boughtEggs.prices[0].store, 'Aldi');
+  assertEqual(result.find((i) => i.id === milk.id).prices.length, 0, 'unchecked item gets no price');
+});
+
+test('completeTrip skips blank prices and works with no purchase arg', () => {
+  const mk = () => ({ ...Store.createItem('Eggs', { tracked: true, stock: 0, onList: true, listQty: 1 }), checked: true });
+  const a = mk();
+  assertEqual(Store.completeTrip([a], { store: 'Aldi', prices: {} })[0].prices.length, 0);
+  const b = mk();
+  assertEqual(Store.completeTrip([b])[0].prices.length, 0, 'no purchase arg still completes');
+  assertEqual(Store.completeTrip([b])[0].stock, 1, 'restock unaffected');
+});
+
+test('validateImport accepts v1 backups without prices and validates new ones', () => {
+  const good = Store.createItem('Milk');
+  const { prices, ...v1Item } = good; // v1 backup shape
+  assertEqual(Store.validateImport({ version: 1, items: [v1Item] }), true, 'v1 backup still imports');
+  assertEqual(Store.validateImport({ version: 1, items: [Store.addPrice(good, 3.5, 'Aldi')] }), true);
+  assertEqual(Store.validateImport({ version: 1, items: [{ ...good, prices: 'nope' }] }), false);
+  assertEqual(Store.validateImport({ version: 1, items: [{ ...good, prices: [{ price: '3', store: 'A', at: 1 }] }] }), false);
+  assertEqual(Store.validateImport({ version: 1, items: [{ ...good, prices: [{ price: 3, store: 5, at: 1 }] }] }), false);
+  assertEqual(Store.validateImport({ version: 1, items: [{ ...good, prices: [{ price: 3, store: 'A' }] }] }), false);
+});
+
+test('normalizeImport backfills missing price history', () => {
+  const good = Store.createItem('Milk');
+  const { prices, ...v1Item } = good;
+  const [normalized] = Store.normalizeImport([v1Item]);
+  assertEqual(normalized.prices, []);
+  const priced = Store.addPrice(good, 2, 'Aldi');
+  assertEqual(Store.normalizeImport([priced])[0].prices.length, 1, 'existing history preserved');
+});

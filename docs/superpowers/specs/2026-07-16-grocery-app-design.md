@@ -17,7 +17,7 @@ A personal grocery app combining a shopping list with a household inventory trac
 
 Deferred to later iterations, in order:
 
-- **V2:** price and store tracking per item.
+- ~~**V2:** price and store tracking per item.~~ Shipped — see "Price history" below.
 - **V3:** saved meals with item tags; selecting a meal adds its items to the list.
 
 Excluded entirely: multi-user sync, accounts, backend, notifications.
@@ -111,6 +111,26 @@ Single page, two layers:
 - **Tap the count** (bottom-left area) opens a small −/+ stepper to adjust stock by hand without toggling the list.
 - Long-press a tile opens item details: rename, category, unit, low threshold, untrack/delete.
 - An "+ Add" affordance at the top of the sheet creates a new tracked item directly in inventory (name, category, starting stock).
+
+## Price history (V2)
+
+Each item carries `prices`: an array of `{ price, store, at }` entries, newest
+first. Purpose is quick reference — "what did I last pay, and where" — not
+cross-store comparison or budgeting.
+
+- **Capture at trip completion.** Tapping "Complete trip" opens a dialog with one
+  store field for the whole trip (free text, autocompleted via `<datalist>` from
+  stores used before) and one price input per bought tracked item. Blank price =
+  no entry recorded. Finishing the dialog is what restocks; cancelling changes
+  nothing. Only tracked items appear — one-offs are deleted on completion, so
+  history would have nowhere to live.
+- **Tile badge.** The latest price shows on the inventory tile in `--muted`,
+  below the count in the visual hierarchy. Items with no history show nothing.
+- **Detail dialog.** Long-pressing an item lists its 5 most recent entries
+  (price, store, date). History is read-only here and survives edits.
+- **Backward compatibility.** Items stored before V2 have no `prices` key.
+  `Store.normalizeImport` backfills `[]` at boot and on import; `validateImport`
+  treats absent `prices` as valid but type-checks the array when present.
 
 ## Data flow: the shopping-trip loop
 

@@ -51,10 +51,25 @@
     <label class="check-label"><input type="checkbox" name="tracked"> Track in inventory</label>
     <label>Stock <input type="number" name="stock" min="0" value="0"></label>
     <label>Low at <input type="number" name="lowAt" min="0" value="1"></label>
+    <div id="price-history"></div>
     <menu>
       <button type="submit" value="save" class="btn-clay">Save</button>
       <button type="button" value="delete" class="btn-danger" id="item-delete">Delete</button>
       <button type="button" value="cancel" id="item-cancel">Cancel</button>
+    </menu>
+  </form>
+</dialog>
+
+<dialog id="trip-dialog">
+  <form id="trip-form">
+    <h3>Complete trip</h3>
+    <p class="dialog-note">Add what you paid, or leave blank to skip.</p>
+    <label>Store <input name="store" list="store-names" placeholder="e.g. Trader Joe's" autocomplete="off"></label>
+    <datalist id="store-names"></datalist>
+    <div id="trip-prices"></div>
+    <menu>
+      <button type="submit" class="btn-clay">Finish trip</button>
+      <button type="button" id="trip-cancel">Cancel</button>
     </menu>
   </form>
 </dialog>

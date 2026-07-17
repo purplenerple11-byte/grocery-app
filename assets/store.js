@@ -13,9 +13,28 @@ const Store = {
       onList: opts.onList ?? false,
       listQty: opts.listQty ?? 1,
       checked: false,
+      prices: opts.prices ? [...opts.prices] : [],
       createdAt: now,
       updatedAt: now
     };
+  },
+
+  /* Price history: newest first. Each entry is { price, store, at }. */
+  addPrice(item, price, store) {
+    const entry = { price, store: String(store).trim(), at: Date.now() };
+    return Store.update(item, { prices: [entry, ...item.prices] });
+  },
+
+  lastPrice(item) {
+    return item.prices.length ? item.prices[0] : null;
+  },
+
+  storeNames(items) {
+    const seen = new Set();
+    for (const it of items) {
+      for (const p of it.prices) if (p.store) seen.add(p.store);
+    }
+    return [...seen].sort((a, b) => a.localeCompare(b));
   },
 
   deriveStatus(item) {
@@ -46,15 +65,22 @@ const Store = {
     return Store.update(item, { stock: Math.max(0, item.stock + delta) });
   },
 
-  completeTrip(items) {
+  /* purchase (optional): { store, prices: { [itemId]: number } }. A price is
+     recorded only for bought items that have one; blank entries are skipped. */
+  completeTrip(items, purchase = null) {
     const kept = [];
     for (const it of items) {
       if (!(it.onList && it.checked)) { kept.push(it); continue; }
       if (!it.tracked) continue; // bought one-off: gone
-      kept.push(Store.update(it, {
+      let next = Store.update(it, {
         stock: it.stock + it.listQty,
         onList: false, checked: false, listQty: 1
-      }));
+      });
+      const price = purchase && purchase.prices ? purchase.prices[it.id] : undefined;
+      if (typeof price === 'number' && Number.isFinite(price)) {
+        next = Store.addPrice(next, price, purchase.store || '');
+      }
+      kept.push(next);
     }
     return kept;
   },
@@ -84,8 +110,26 @@ const Store = {
       typeof it.id === 'string' && /^[\w-]{1,64}$/.test(it.id) &&
       strings.every((k) => typeof it[k] === 'string') &&
       numbers.every((k) => typeof it[k] === 'number' && Number.isFinite(it[k])) &&
-      booleans.every((k) => typeof it[k] === 'boolean')
+      booleans.every((k) => typeof it[k] === 'boolean') &&
+      Store.validPrices(it.prices)
     );
+  },
+
+  /* Absent prices is valid: v1 backups predate price history (normalizeImport
+     fills them in). Present prices must be well-formed. */
+  validPrices(prices) {
+    if (prices === undefined) return true;
+    if (!Array.isArray(prices)) return false;
+    return prices.every((p) =>
+      p && typeof p === 'object' &&
+      typeof p.price === 'number' && Number.isFinite(p.price) &&
+      typeof p.store === 'string' &&
+      typeof p.at === 'number' && Number.isFinite(p.at)
+    );
+  },
+
+  normalizeImport(items) {
+    return items.map((it) => (it.prices ? it : { ...it, prices: [] }));
   },
 };
 

@@ -89,6 +89,9 @@ button { font-family: var(--sans); cursor: pointer; }
 .count { font-weight: 600; font-size: 11px; color: var(--ink); background: none; border: none; padding: 0 2px; }
 .stock-step { display: none; width: 20px; height: 20px; font-size: 12px; }
 .tile.editing .stock-step { display: inline-flex; align-items: center; justify-content: center; }
+/* Last price sits below the count in the hierarchy: muted, lighter weight. */
+.tile .price { font-size: 9.5px; color: var(--muted); font-weight: 400; margin-left: auto; }
+.tile.editing .price { display: none; }
 .ribbon {
   position: absolute; top: 0; right: 0; width: 28px; height: 28px;
   background: var(--clay); color: var(--canvas);
@@ -117,6 +120,22 @@ dialog input:not([type="checkbox"]), dialog select {
   border-radius: 8px; padding: 8px 10px; color: var(--ink); font-size: 14px;
 }
 dialog menu { display: flex; flex-direction: column; gap: 8px; margin-top: 14px; padding: 0; list-style: none; }
+.dialog-note { font-size: 12px; color: var(--muted); margin: -6px 0 12px; }
+
+/* Trip dialog: one price row per bought item */
+#trip-prices { max-height: 44vh; overflow-y: auto; }
+.trip-row { display: flex; align-items: center; gap: 10px; margin-bottom: 8px; }
+.trip-row .trip-name { font-family: var(--serif); font-size: 15px; flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.trip-row .trip-qty { font-size: 11px; color: var(--muted); flex: none; }
+/* id-scoped so it beats the generic `dialog input { width: 100% }` rule */
+#trip-prices .trip-row input { width: 84px; flex: none; margin-top: 0; }
+
+/* Price history in the item dialog */
+#price-history:not(:empty) { border-top: 1px solid var(--hairline); margin: 4px 0 10px; padding-top: 10px; }
+.hist-label { font-size: 11px; font-weight: 600; color: var(--muted); text-transform: uppercase; letter-spacing: .08em; margin-bottom: 6px; }
+.hist-row { display: flex; gap: 8px; font-size: 13px; color: var(--muted); margin-bottom: 4px; }
+.hist-row .hist-price { color: var(--ink); font-weight: 600; }
+.hist-row .hist-date { margin-left: auto; font-size: 11px; }
 #item-form menu { flex-direction: row; }
 dialog menu button, .import-label {
   padding: 9px 12px; border-radius: 8px; border: 1px solid var(--hairline);

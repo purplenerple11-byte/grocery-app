@@ -17,6 +17,14 @@ function groupByCategory(items) {
   return [...groups.entries()].sort((a, b) => rank(a[0]) - rank(b[0]) || a[0].localeCompare(b[0]));
 }
 
+function formatPrice(n) {
+  return `$${n.toFixed(2)}`;
+}
+
+function formatDate(ts) {
+  return new Date(ts).toLocaleDateString(undefined, { month: 'short', day: 'numeric' });
+}
+
 function showBanner(msg) {
   document.getElementById('banner-text').textContent = msg;
   document.getElementById('banner').hidden = false;
@@ -84,6 +92,7 @@ function renderSheet() {
     <div class="tile-grid">
       ${items.map((it) => {
         const status = Store.deriveStatus(it);
+        const last = Store.lastPrice(it);
         return `
         <div class="tile" data-id="${it.id}" data-action="toggle" role="button" tabindex="0">
           <span class="name">${escapeHtml(it.name)}</span>
@@ -94,6 +103,7 @@ function renderSheet() {
               <button class="count" data-action="count">${it.stock}</button>
               <button class="step-btn stock-step" data-action="stock-plus" aria-label="More stock">＋</button>
             </span>
+            ${last ? `<span class="price">${escapeHtml(formatPrice(last.price))}</span>` : ''}
           </span>
           ${it.onList ? '<span class="ribbon">✓</span>' : ''}
         </div>`;
@@ -129,10 +139,40 @@ document.getElementById('list').addEventListener('click', (e) => {
   }
 });
 
-document.getElementById('complete-trip').addEventListener('click', async () => {
-  state.items = Store.completeTrip(state.items);
+/* Completing a trip opens the price-capture dialog; finishing it there is what
+   actually restocks. Only tracked items keep history, so only they get a row. */
+document.getElementById('complete-trip').addEventListener('click', () => {
+  const bought = state.items.filter((it) => it.onList && it.checked && it.tracked);
+  document.getElementById('store-names').innerHTML =
+    Store.storeNames(state.items).map((s) => `<option value="${escapeHtml(s)}">`).join('');
+  const form = document.getElementById('trip-form');
+  form.elements.store.value = '';
+  document.getElementById('trip-prices').innerHTML = bought.map((it) => `
+    <div class="trip-row">
+      <span class="trip-name">${escapeHtml(it.name)}</span>
+      ${it.listQty > 1 ? `<span class="trip-qty">×${it.listQty}</span>` : ''}
+      <input type="number" step="0.01" min="0" inputmode="decimal" placeholder="$" data-price-for="${it.id}" aria-label="Price for ${escapeHtml(it.name)}">
+    </div>`).join('');
+  document.getElementById('trip-dialog').showModal();
+});
+
+document.getElementById('trip-cancel').addEventListener('click', () => {
+  document.getElementById('trip-dialog').close();
+});
+
+document.getElementById('trip-form').addEventListener('submit', async (e) => {
+  e.preventDefault();
+  const prices = {};
+  for (const input of document.querySelectorAll('#trip-prices input[data-price-for]')) {
+    const raw = input.value.trim();
+    if (!raw) continue; // blank = skip, per design
+    const value = parseFloat(raw);
+    if (Number.isFinite(value) && value >= 0) prices[input.dataset.priceFor] = value;
+  }
+  state.items = Store.completeTrip(state.items, { store: e.target.elements.store.value, prices });
   render();
-  try { await DB.replaceAll(state.items); } catch (e) { showBanner('Save failed — changes may not persist.'); }
+  document.getElementById('trip-dialog').close();
+  try { await DB.replaceAll(state.items); } catch (err) { showBanner('Save failed — changes may not persist.'); }
 });
 
 /* sheet open/close: tap the bar, or swipe it up/down */
@@ -206,6 +246,15 @@ function openItemDialog(item) {
   form.elements.stock.value = item ? item.stock : 0;
   form.elements.lowAt.value = item ? item.lowAt : 1;
   document.getElementById('item-delete').hidden = !item;
+  document.getElementById('price-history').innerHTML =
+    item && item.prices.length
+      ? `<div class="hist-label">Price history</div>` + item.prices.slice(0, 5).map((p) => `
+          <div class="hist-row">
+            <span class="hist-price">${escapeHtml(formatPrice(p.price))}</span>
+            <span>${escapeHtml(p.store || '—')}</span>
+            <span class="hist-date">${escapeHtml(formatDate(p.at))}</span>
+          </div>`).join('')
+      : '';
   document.getElementById('item-dialog').showModal();
 }
 
@@ -261,13 +310,14 @@ document.getElementById('import-file').addEventListener('change', async (e) => {
   let data;
   try { data = JSON.parse(await file.text()); } catch { showBanner('Import failed: not valid JSON.'); return; }
   if (!Store.validateImport(data)) { showBanner('Import failed: unrecognized file format.'); return; }
+  const items = Store.normalizeImport(data.items); // v1 backups predate price history
   try {
-    await DB.replaceAll(data.items);
+    await DB.replaceAll(items);
   } catch (err) {
     showBanner('Import failed — data unchanged.');
     return;
   }
-  state.items = data.items;
+  state.items = items;
   render();
   document.getElementById('settings-dialog').close();
 });
@@ -275,7 +325,8 @@ document.getElementById('import-file').addEventListener('change', async (e) => {
 async function boot() {
   await DB.init();
   if (!DB.persistent) showBanner("Changes won't be saved in this session.");
-  state.items = await DB.getAll();
+  // Items stored before price history existed have no prices array.
+  state.items = Store.normalizeImport(await DB.getAll());
   render();
   if ('serviceWorker' in navigator) navigator.serviceWorker.register('./sw.js');
 }
