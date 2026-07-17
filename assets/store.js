@@ -76,11 +76,12 @@ const Store = {
 
   validateImport(data) {
     if (!data || typeof data !== 'object' || data.version !== 1 || !Array.isArray(data.items)) return false;
-    const strings = ['id', 'name', 'category', 'unit'];
+    const strings = ['name', 'category', 'unit'];
     const numbers = ['stock', 'lowAt', 'listQty'];
     const booleans = ['tracked', 'onList', 'checked'];
     return data.items.every((it) =>
       it && typeof it === 'object' &&
+      typeof it.id === 'string' && /^[\w-]{1,64}$/.test(it.id) &&
       strings.every((k) => typeof it[k] === 'string') &&
       numbers.every((k) => typeof it[k] === 'number' && Number.isFinite(it[k])) &&
       booleans.every((k) => typeof it[k] === 'boolean')

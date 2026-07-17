@@ -164,6 +164,8 @@ test('validateImport rejects wrong value types', () => {
   assertEqual(Store.validateImport({ version: 1, items: [{ ...good, listQty: '<b>1</b>' }] }), false);
   assertEqual(Store.validateImport({ version: 1, items: [{ ...good, onList: 'yes' }] }), false);
   assertEqual(Store.validateImport({ version: 1, items: [{ ...good, stock: NaN }] }), false);
+  assertEqual(Store.validateImport({ version: 1, items: [{ ...good, id: '"><img src=x onerror=1>' }] }), false);
+  assertEqual(Store.validateImport({ version: 1, items: [{ ...good, id: 'a'.repeat(65) }] }), false);
 });
 
 test('update preserves untouched fields', () => {
