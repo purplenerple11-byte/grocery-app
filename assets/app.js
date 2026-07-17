@@ -71,7 +71,36 @@ function renderList() {
     || '<div class="cat" style="margin-top:30px;text-align:center">Nothing on the list</div>';
 }
 
-function renderSheet() { /* implemented in the inventory task */ }
+function renderSheet() {
+  const tracked = state.items.filter((it) => it.tracked);
+  const { out, low } = Store.outLowCounts(state.items);
+  document.getElementById('peek-pills').innerHTML =
+    (out ? `<span class="pill"><span class="dot out"></span>${out} out</span>` : '') +
+    (low ? `<span class="pill"><span class="dot low"></span>${low} low</span>` : '');
+  document.getElementById('inv-add').hidden = !document.getElementById('sheet').classList.contains('open');
+
+  document.getElementById('inv-grid').innerHTML = groupByCategory(tracked).map(([cat, items]) => `
+    <div class="inv-cat">${escapeHtml(cat)}</div>
+    <div class="tile-grid">
+      ${items.map((it) => {
+        const status = Store.deriveStatus(it);
+        return `
+        <div class="tile" data-id="${it.id}" data-action="toggle" role="button" tabindex="0">
+          <span class="name">${escapeHtml(it.name)}</span>
+          <span class="bottom">
+            <span class="meta">
+              <span class="dot ${status === 'stocked' ? 'ok' : status}"></span>
+              <button class="step-btn stock-step" data-action="stock-minus" aria-label="Less stock">−</button>
+              <button class="count" data-action="count">${it.stock}</button>
+              <button class="step-btn stock-step" data-action="stock-plus" aria-label="More stock">＋</button>
+            </span>
+          </span>
+          ${it.onList ? '<span class="ribbon">✓</span>' : ''}
+        </div>`;
+      }).join('')}
+    </div>`).join('')
+    || '<div class="cat" style="margin-top:20px;text-align:center">No tracked items yet</div>';
+}
 
 function render() { renderList(); renderSheet(); }
 
@@ -105,6 +134,48 @@ document.getElementById('complete-trip').addEventListener('click', async () => {
   render();
   try { await DB.replaceAll(state.items); } catch (e) { showBanner('Save failed — changes may not persist.'); }
 });
+
+/* sheet open/close: tap the bar, or swipe it up/down */
+(() => {
+  const sheet = document.getElementById('sheet');
+  const bar = document.getElementById('sheet-bar');
+  let startY = null, dragged = false;
+  bar.addEventListener('pointerdown', (e) => { startY = e.clientY; dragged = false; });
+  bar.addEventListener('pointermove', (e) => {
+    if (startY === null) return;
+    const dy = e.clientY - startY;
+    if (dy < -30) { sheet.classList.add('open'); startY = null; dragged = true; renderSheet(); }
+    else if (dy > 30) { sheet.classList.remove('open'); startY = null; dragged = true; renderSheet(); }
+  });
+  ['pointerup', 'pointercancel'].forEach((ev) => bar.addEventListener(ev, () => { startY = null; }));
+  bar.addEventListener('click', () => {
+    if (dragged) { dragged = false; return; } // a swipe already handled this gesture
+    sheet.classList.toggle('open');
+    renderSheet();
+  });
+})();
+
+document.getElementById('inv-grid').addEventListener('click', (e) => {
+  const actionEl = e.target.closest('[data-action]');
+  if (!actionEl) return;
+  const item = findItem(actionEl);
+  const action = actionEl.dataset.action;
+  if (action === 'stock-minus') { commit(Store.adjustStock(item, -1)); keepEditing(item.id); return; }
+  if (action === 'stock-plus') { commit(Store.adjustStock(item, 1)); keepEditing(item.id); return; }
+  if (action === 'count') {
+    const tile = actionEl.closest('.tile');
+    document.querySelectorAll('.tile.editing').forEach((t) => t !== tile && t.classList.remove('editing'));
+    tile.classList.toggle('editing');
+    return;
+  }
+  if (action === 'toggle') commit(Store.toggleOnList(item));
+});
+
+/* re-apply .editing after render() rebuilds the grid */
+function keepEditing(id) {
+  const tile = document.querySelector(`.tile[data-id="${id}"]`);
+  if (tile) tile.classList.add('editing');
+}
 
 async function boot() {
   await DB.init();
