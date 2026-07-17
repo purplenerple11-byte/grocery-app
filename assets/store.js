@@ -80,3 +80,56 @@ const Store = {
     return data.items.every((it) => it && typeof it === 'object' && required.every((k) => k in it));
   }
 };
+
+/* IndexedDB adapter. Falls back to in-memory Map when IndexedDB is unavailable. */
+const DB = {
+  _db: null,
+  _mem: null,
+  persistent: true,
+
+  init(name = 'grocery') {
+    return new Promise((resolve) => {
+      let req;
+      try {
+        req = indexedDB.open(name, 1);
+      } catch (e) {
+        DB.persistent = false; DB._mem = new Map(); resolve(); return;
+      }
+      req.onupgradeneeded = () => {
+        req.result.createObjectStore('items', { keyPath: 'id' });
+        req.result.createObjectStore('settings');
+      };
+      req.onsuccess = () => { DB._db = req.result; resolve(); };
+      req.onerror = () => { DB.persistent = false; DB._mem = new Map(); resolve(); };
+    });
+  },
+
+  _tx(mode, fn) {
+    return new Promise((resolve, reject) => {
+      const tx = DB._db.transaction('items', mode);
+      const result = fn(tx.objectStore('items'));
+      tx.oncomplete = () => resolve(result && 'result' in result ? result.result : undefined);
+      tx.onerror = () => reject(tx.error);
+    });
+  },
+
+  async getAll() {
+    if (!DB.persistent) return [...DB._mem.values()];
+    return DB._tx('readonly', (store) => store.getAll());
+  },
+
+  async put(item) {
+    if (!DB.persistent) { DB._mem.set(item.id, item); return; }
+    await DB._tx('readwrite', (store) => store.put(item));
+  },
+
+  async delete(id) {
+    if (!DB.persistent) { DB._mem.delete(id); return; }
+    await DB._tx('readwrite', (store) => store.delete(id));
+  },
+
+  async replaceAll(items) {
+    if (!DB.persistent) { DB._mem = new Map(items.map((i) => [i.id, i])); return; }
+    await DB._tx('readwrite', (store) => { store.clear(); items.forEach((i) => store.put(i)); });
+  }
+};

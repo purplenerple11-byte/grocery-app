@@ -109,3 +109,25 @@ test('validateImport rejects bad shapes', () => {
   assertEqual(Store.validateImport({ version: 1, items: 'nope' }), false);
   assertEqual(Store.validateImport({ version: 1, items: [{ id: 'x', name: 'incomplete' }] }), false);
 });
+
+test('DB round-trip: init, put, getAll, delete, replaceAll', async () => {
+  await new Promise((res) => { const r = indexedDB.deleteDatabase('grocery-test'); r.onsuccess = r.onerror = r.onblocked = res; });
+  await DB.init('grocery-test');
+  assertEqual(DB.persistent, true);
+
+  const a = Store.createItem('A'), b = Store.createItem('B');
+  await DB.put(a);
+  await DB.put(b);
+  let all = await DB.getAll();
+  assertEqual(all.length, 2);
+
+  await DB.delete(a.id);
+  all = await DB.getAll();
+  assertEqual(all.length, 1);
+  assertEqual(all[0].id, b.id);
+
+  await DB.replaceAll([a]);
+  all = await DB.getAll();
+  assertEqual(all.length, 1);
+  assertEqual(all[0].id, a.id);
+});
