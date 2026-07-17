@@ -66,23 +66,42 @@ python3 -m http.server 8000        # from repo root; service worker needs http
 3. **Long-press and swipe can't be simulated** reliably in automation. Call
    `openItemDialog(item)` directly instead, and verify gestures by code review —
    **they have never been tested on a real phone.**
+   Dispatching `PointerEvent`s by hand *does* drive `onLongPress`'s state machine
+   faithfully, so it's worth doing — but **`el.dispatchEvent(new MouseEvent('click'))`
+   is not a real click** and will give you a false pass. Synthetic clicks aren't
+   hit-tested, so they ignore `<dialog>` backdrop retargeting and reach listeners
+   a real tap never would. This exact trap hid a ship-blocking bug in V3 (see
+   `onLongPress`'s `swallowClick`). To test a tap, use a real CDP-level click.
 4. **Never edit `icons/*.png` by hand** — regenerate via `python3 tools/make_icons.py`.
 5. **Git identity isn't configured** — commits carry a placeholder author
    (`Pig Ote <pigote@Hops.lan>`). User has been told; don't "fix" it silently.
 
 ## Status
 
-**Shipped and live:** v1 (list, inventory sheet, trip loop, export/import, PWA)
-and V2 (price + store history). 20 commits, 26 tests passing.
+**Shipped and live:** v1 (list, inventory sheet, trip loop, export/import, PWA),
+V2 (price + store history), and V3 (saved meals). 38 tests passing.
 
-**Awaiting the user's real-device review.** A checklist was given covering the
-icon, price capture, tile hierarchy, legacy-data loading, and gestures. If they
+**Awaiting the user's real-device review of V3.** A checklist was given. If they
 report a bug, that takes priority over new work.
 
-**Next up: V3 — saved meals.** Tag items into a meal; selecting the meal adds its
-items to the list. This was the user's original "if I select a meal it auto-fills
-my list" idea. Not yet designed. Data model note: a meal is just a named set of
-item ids, which is why v1 used one flat Item entity.
+**V3 — saved meals (built).** A meal is a named set of item ids — it never copies
+item data, so renaming an item updates every meal for free and a deleted item
+just drops out (`Store.pruneMeals`). Decisions the user made, don't silently
+revisit them:
+- Selecting a meal adds **every** item, not just what you're short on — the user
+  prunes, the app doesn't guess. The banner reports "N added, M short".
+- Items you already have enough of render dimmed (`.row.have` + "have 4"). This
+  rule is global, not meal-scoped — no provenance is tracked. `.row.done`
+  (strikethrough) still means "in my basket"; the two must stay distinct.
+- Meals are created by **saving the current list** (`＋ Save list` in the drawer),
+  not by tagging items one at a time.
+- Meals live in a left-edge drawer with a vertically-centred tab. Long-press a
+  meal to rename/delete. Editing a meal's *contents* is deliberately not
+  supported — re-save instead.
+- Meals persist in the **`settings` object store**, which has existed unused in
+  the v1 schema since day one — so V3 needed no DB version bump and no migration
+  over live data. Export is now `version: 2` and carries meals; v1 backups still
+  import.
 
 **Backlog** (non-blocking, from the v1 final review):
 - Editing an item whose category isn't in `CATEGORY_ORDER` silently resets it to

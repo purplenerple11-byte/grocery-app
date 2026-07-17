@@ -24,6 +24,18 @@
 
 <button id="complete-trip" hidden>Complete trip</button>
 
+<button id="meals-tab" aria-label="Meals" aria-expanded="false" aria-controls="meals-drawer">
+  <span class="tab-grip"></span>
+</button>
+<aside id="meals-drawer" aria-hidden="true">
+  <div class="drawer-head">
+    <h3>Meals</h3>
+    <button id="meal-save" disabled>＋ Save list</button>
+  </div>
+  <div id="meals-list"></div>
+</aside>
+<div id="meals-scrim" hidden></div>
+
 <section id="sheet">
   <div id="sheet-bar">
     <div class="grabber"></div>
@@ -72,6 +84,19 @@
     <menu>
       <button type="submit" class="btn-clay">Finish trip</button>
       <button type="button" id="trip-cancel">Cancel</button>
+    </menu>
+  </form>
+</dialog>
+
+<dialog id="meal-dialog">
+  <form id="meal-form">
+    <h3 id="meal-dialog-title">Save list as meal</h3>
+    <p class="dialog-note" id="meal-dialog-note"></p>
+    <label>Name <input name="name" required placeholder="e.g. Tacos" autocomplete="off"></label>
+    <menu>
+      <button type="submit" class="btn-clay">Save</button>
+      <button type="button" class="btn-danger" id="meal-delete">Delete</button>
+      <button type="button" id="meal-cancel">Cancel</button>
     </menu>
   </form>
 </dialog>

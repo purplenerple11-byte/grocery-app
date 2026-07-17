@@ -99,13 +99,13 @@ test('outLowCounts counts tracked items only', () => {
 test('serialize/validateImport round-trip', () => {
   const items = [Store.createItem('Milk', { tracked: true })];
   const data = JSON.parse(Store.serialize(items));
-  assertEqual(data.version, 1);
+  assertEqual(data.version, 2); // bumped in V3 to carry meals
   assertEqual(Store.validateImport(data), true);
 });
 
 test('validateImport rejects bad shapes', () => {
   assertEqual(Store.validateImport(null), false);
-  assertEqual(Store.validateImport({ version: 2, items: [] }), false);
+  assertEqual(Store.validateImport({ version: 9, items: [] }), false); // still-unknown version
   assertEqual(Store.validateImport({ version: 1, items: 'nope' }), false);
   assertEqual(Store.validateImport({ version: 1, items: [{ id: 'x', name: 'incomplete' }] }), false);
 });
@@ -258,4 +258,115 @@ test('normalizePrice rounds to cents and rejects junk', () => {
   assertEqual(Store.normalizePrice('abc'), null);
   assertEqual(Store.normalizePrice(''), null);
   assertEqual(Store.normalizePrice('99999999999999999999'), null, 'absurd value rejected');
+});
+
+/* ---- Meals (V3) ---- */
+
+test('createMeal names, dedupes ids, and stamps timestamps', () => {
+  const m = Store.createMeal('  Tacos ', ['a', 'b', 'a']);
+  assertEqual(m.name, 'Tacos', 'trims name');
+  assertEqual(m.itemIds, ['a', 'b'], 'dedupes repeated ids');
+  assert(m.id.length > 0, 'has id');
+  assert(m.createdAt > 0 && m.updatedAt > 0, 'stamped');
+  assertEqual(Store.createMeal('Empty').itemIds, [], 'defaults to no items');
+});
+
+test('mealItems resolves in meal order and drops deleted items', () => {
+  const a = Store.createItem('Tortillas'), b = Store.createItem('Mince');
+  const meal = Store.createMeal('Tacos', [b.id, a.id]);
+  assertEqual(Store.mealItems(meal, [a, b]).map((i) => i.name), ['Mince', 'Tortillas'], 'meal order, not item order');
+  assertEqual(Store.mealItems(meal, [a]).map((i) => i.name), ['Tortillas'], 'deleted item drops out silently');
+  assertEqual(Store.mealItems(meal, []), [], 'all gone is not an error');
+});
+
+test('mealSummary is a flat ingredient line', () => {
+  const a = Store.createItem('Tortillas'), b = Store.createItem('Mince');
+  assertEqual(Store.mealSummary(Store.createMeal('Tacos', [a.id, b.id]), [a, b]), 'Tortillas, Mince');
+  assertEqual(Store.mealSummary(Store.createMeal('Gone', ['nope']), [a]), '', 'no survivors is an empty line');
+});
+
+test('hasEnough only counts tracked items above the low mark', () => {
+  const stocked = Store.createItem('Cumin', { tracked: true, stock: 4, lowAt: 1 });
+  assertEqual(Store.hasEnough(stocked), true, 'well stocked');
+  assertEqual(Store.hasEnough(Store.createItem('Onion', { tracked: true, stock: 1, lowAt: 1 })), false, 'at the low mark is short');
+  assertEqual(Store.hasEnough(Store.createItem('Mince', { tracked: true, stock: 0, lowAt: 1 })), false, 'out is short');
+  assertEqual(Store.hasEnough(Store.createItem('Napkins', { tracked: false, stock: 9 })), false,
+    'untracked has no meaningful stock, so never counts as covered');
+});
+
+test('addMealToList adds every item, stocked or not', () => {
+  const have = Store.createItem('Cumin', { tracked: true, stock: 4, lowAt: 1 });
+  const need = Store.createItem('Mince', { tracked: true, stock: 0, lowAt: 1 });
+  const other = Store.createItem('Soap');
+  const meal = Store.createMeal('Tacos', [have.id, need.id]);
+  const out = Store.addMealToList([have, need, other], meal);
+  assertEqual(out.find((i) => i.id === have.id).onList, true, 'stocked item still lands — user prunes');
+  assertEqual(out.find((i) => i.id === need.id).onList, true);
+  assertEqual(out.find((i) => i.id === other.id).onList, false, 'items outside the meal untouched');
+});
+
+test('addMealToList preserves qty and basket state of items already listed', () => {
+  let listed = Store.createItem('Mince', { onList: true, listQty: 3 });
+  listed = Store.setChecked(listed, true);
+  const meal = Store.createMeal('Tacos', [listed.id]);
+  const [out] = Store.addMealToList([listed], meal);
+  assertEqual(out.listQty, 3, 'qty not reset');
+  assertEqual(out.checked, true, 'basket state not clobbered');
+  assert(out === listed, 'already-listed item is returned untouched');
+});
+
+test('mealAddStats counts total and how many you are short on', () => {
+  const have = Store.createItem('Cumin', { tracked: true, stock: 4, lowAt: 1 });
+  const low = Store.createItem('Onion', { tracked: true, stock: 1, lowAt: 1 });
+  const out = Store.createItem('Mince', { tracked: true, stock: 0, lowAt: 1 });
+  const meal = Store.createMeal('Tacos', [have.id, low.id, out.id]);
+  assertEqual(Store.mealAddStats(meal, [have, low, out]), { total: 3, short: 2 });
+  assertEqual(Store.mealAddStats(meal, []), { total: 0, short: 0 }, 'meal whose items are all deleted');
+});
+
+test('pruneMeals drops dangling ids and leaves untouched meals identical', () => {
+  const a = Store.createItem('Tortillas');
+  const meal = Store.createMeal('Tacos', [a.id, 'deleted-id']);
+  const clean = Store.createMeal('Toast', [a.id]);
+  const [pruned, untouched] = Store.pruneMeals([meal, clean], [a]);
+  assertEqual(pruned.itemIds, [a.id], 'dangling id removed');
+  assert(untouched === clean, 'unchanged meal is the same object, so callers can skip a write');
+});
+
+test('serialize is v2 and carries meals', () => {
+  const a = Store.createItem('Tortillas');
+  const meal = Store.createMeal('Tacos', [a.id]);
+  const data = JSON.parse(Store.serialize([a], [meal]));
+  assertEqual(data.version, 2);
+  assertEqual(data.meals.length, 1);
+  assertEqual(data.meals[0].name, 'Tacos');
+  assertEqual(JSON.parse(Store.serialize([a])).meals, [], 'meals default to empty');
+});
+
+test('validateImport accepts v1 backups and v2 with meals', () => {
+  const good = Store.createItem('Milk');
+  const meal = Store.createMeal('Tacos', [good.id]);
+  assertEqual(Store.validateImport({ version: 1, items: [good] }), true, 'v1 still loads');
+  assertEqual(Store.validateImport({ version: 2, items: [good], meals: [meal] }), true);
+  assertEqual(Store.validateImport({ version: 2, items: [good] }), true, 'v2 without meals is fine');
+  assertEqual(Store.validateImport({ version: 3, items: [good] }), false, 'unknown version rejected');
+});
+
+test('validateImport rejects malformed meals', () => {
+  const good = Store.createItem('Milk');
+  const v = (meals) => Store.validateImport({ version: 2, items: [good], meals });
+  assertEqual(v('nope'), false, 'meals must be an array');
+  assertEqual(v([{ id: 'a', name: 'X', itemIds: [] }]), true);
+  assertEqual(v([{ id: 'a', name: 'X' }]), false, 'itemIds required');
+  assertEqual(v([{ id: 'a', name: 5, itemIds: [] }]), false, 'name must be a string');
+  assertEqual(v([{ id: 'bad id!', name: 'X', itemIds: [] }]), false, 'meal id must be uuid-shaped');
+  assertEqual(v([{ id: 'a', name: 'X', itemIds: ['../../etc'] }]), false,
+    'itemIds must be uuid-shaped — no key injection via an import');
+});
+
+test('normalizeImportMeals tolerates v1 backups and drops unknown item refs', () => {
+  const a = Store.createItem('Tortillas');
+  assertEqual(Store.normalizeImportMeals(undefined, [a]), [], 'v1 backup has no meals key');
+  const meal = Store.createMeal('Tacos', [a.id, 'ghost']);
+  assertEqual(Store.normalizeImportMeals([meal], [a])[0].itemIds, [a.id], 'ref to an item the file lacked is dropped');
 });
