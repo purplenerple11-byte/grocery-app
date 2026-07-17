@@ -246,3 +246,16 @@ test('normalizeImport backfills missing price history', () => {
   const priced = Store.addPrice(good, 2, 'Aldi');
   assertEqual(Store.normalizeImport([priced])[0].prices.length, 1, 'existing history preserved');
 });
+
+test('normalizePrice rounds to cents and rejects junk', () => {
+  assertEqual(Store.normalizePrice('3.5'), 3.5);
+  assertEqual(Store.normalizePrice('1.999'), 2, 'rounds to cents instead of blocking');
+  assertEqual(Store.normalizePrice('1.994'), 1.99);
+  assertEqual(Store.normalizePrice('$12.99'), 12.99, 'tolerates a typed dollar sign');
+  assertEqual(Store.normalizePrice('1,234.5'), 1234.5, 'tolerates thousands separator');
+  assertEqual(Store.normalizePrice('0'), 0, 'free item is valid');
+  assertEqual(Store.normalizePrice('-5'), null, 'negative rejected');
+  assertEqual(Store.normalizePrice('abc'), null);
+  assertEqual(Store.normalizePrice(''), null);
+  assertEqual(Store.normalizePrice('99999999999999999999'), null, 'absurd value rejected');
+});

@@ -61,7 +61,9 @@
 </dialog>
 
 <dialog id="trip-dialog">
-  <form id="trip-form">
+  <!-- novalidate: the submit handler sanitizes prices itself (rounds to cents,
+       skips junk). Native validation would instead block the whole trip. -->
+  <form id="trip-form" novalidate>
     <h3>Complete trip</h3>
     <p class="dialog-note">Add what you paid, or leave blank to skip.</p>
     <label>Store <input name="store" list="store-names" placeholder="e.g. Trader Joe's" autocomplete="off"></label>

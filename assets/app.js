@@ -151,7 +151,7 @@ document.getElementById('complete-trip').addEventListener('click', () => {
     <div class="trip-row">
       <span class="trip-name">${escapeHtml(it.name)}</span>
       ${it.listQty > 1 ? `<span class="trip-qty">×${it.listQty}</span>` : ''}
-      <input type="number" step="0.01" min="0" inputmode="decimal" placeholder="$" data-price-for="${it.id}" aria-label="Price for ${escapeHtml(it.name)}">
+      <input type="text" inputmode="decimal" placeholder="$" data-price-for="${it.id}" aria-label="Price for ${escapeHtml(it.name)}">
     </div>`).join('');
   document.getElementById('trip-dialog').showModal();
 });
@@ -166,8 +166,8 @@ document.getElementById('trip-form').addEventListener('submit', async (e) => {
   for (const input of document.querySelectorAll('#trip-prices input[data-price-for]')) {
     const raw = input.value.trim();
     if (!raw) continue; // blank = skip, per design
-    const value = parseFloat(raw);
-    if (Number.isFinite(value) && value >= 0) prices[input.dataset.priceFor] = value;
+    const value = Store.normalizePrice(raw);
+    if (value !== null) prices[input.dataset.priceFor] = value;
   }
   state.items = Store.completeTrip(state.items, { store: e.target.elements.store.value, prices });
   render();

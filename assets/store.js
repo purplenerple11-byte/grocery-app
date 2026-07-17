@@ -1,4 +1,7 @@
 /* Data layer: Store = pure state transitions. DB (IndexedDB adapter) is added below in a later task. */
+
+const MAX_PRICE = 100000; // guards against fat-fingered values overflowing the tile
+
 const Store = {
   createItem(name, opts = {}) {
     const now = Date.now();
@@ -17,6 +20,14 @@ const Store = {
       createdAt: now,
       updatedAt: now
     };
+  },
+
+  /* Coerce user-typed price text to a sane amount, or null to skip it.
+     Rounds to cents and rejects negatives/junk rather than blocking the trip. */
+  normalizePrice(raw) {
+    const value = parseFloat(String(raw).replace(/[$,\s]/g, ''));
+    if (!Number.isFinite(value) || value < 0 || value > MAX_PRICE) return null;
+    return Math.round(value * 100) / 100;
   },
 
   /* Price history: newest first. Each entry is { price, store, at }. */
