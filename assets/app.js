@@ -88,6 +88,24 @@ document.getElementById('banner-dismiss').addEventListener('click', () => {
   document.getElementById('banner').hidden = true;
 });
 
+document.getElementById('list').addEventListener('click', (e) => {
+  const btn = e.target.closest('[data-action]');
+  if (!btn) return;
+  const item = findItem(btn);
+  switch (btn.dataset.action) {
+    case 'check': commit(Store.setChecked(item, !item.checked)); break;
+    case 'qty-minus': commit(Store.adjustListQty(item, -1)); break;
+    case 'qty-plus': commit(Store.adjustListQty(item, 1)); break;
+    case 'track': commit(Store.update(item, { tracked: true })); break;
+  }
+});
+
+document.getElementById('complete-trip').addEventListener('click', async () => {
+  state.items = Store.completeTrip(state.items);
+  render();
+  try { await DB.replaceAll(state.items); } catch (e) { showBanner('Save failed — changes may not persist.'); }
+});
+
 async function boot() {
   await DB.init();
   if (!DB.persistent) showBanner("Changes won't be saved in this session.");
