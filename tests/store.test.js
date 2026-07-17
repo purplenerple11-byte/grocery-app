@@ -95,3 +95,17 @@ test('outLowCounts counts tracked items only', () => {
   ];
   assertEqual(Store.outLowCounts(items), { out: 1, low: 1 });
 });
+
+test('serialize/validateImport round-trip', () => {
+  const items = [Store.createItem('Milk', { tracked: true })];
+  const data = JSON.parse(Store.serialize(items));
+  assertEqual(data.version, 1);
+  assertEqual(Store.validateImport(data), true);
+});
+
+test('validateImport rejects bad shapes', () => {
+  assertEqual(Store.validateImport(null), false);
+  assertEqual(Store.validateImport({ version: 2, items: [] }), false);
+  assertEqual(Store.validateImport({ version: 1, items: 'nope' }), false);
+  assertEqual(Store.validateImport({ version: 1, items: [{ id: 'x', name: 'incomplete' }] }), false);
+});

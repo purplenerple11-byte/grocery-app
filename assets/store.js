@@ -68,5 +68,15 @@ const Store = {
       else if (s === 'low') low++;
     }
     return { out, low };
+  },
+
+  serialize(items) {
+    return JSON.stringify({ version: 1, items }, null, 2);
+  },
+
+  validateImport(data) {
+    if (!data || typeof data !== 'object' || data.version !== 1 || !Array.isArray(data.items)) return false;
+    const required = ['id', 'name', 'category', 'tracked', 'stock', 'lowAt', 'unit', 'onList', 'listQty', 'checked'];
+    return data.items.every((it) => it && typeof it === 'object' && required.every((k) => k in it));
   }
 };
