@@ -177,6 +177,92 @@ function keepEditing(id) {
   if (tile) tile.classList.add('editing');
 }
 
+function onLongPress(container, selector, handler) {
+  let timer = null;
+  container.addEventListener('pointerdown', (e) => {
+    const el = e.target.closest(selector);
+    if (!el) return;
+    timer = setTimeout(() => { timer = null; handler(el); }, 500);
+  });
+  for (const ev of ['pointerup', 'pointermove', 'pointercancel', 'pointerleave']) {
+    container.addEventListener(ev, () => { clearTimeout(timer); timer = null; });
+  }
+}
+
+let dialogItemId = null; // null = creating a new item
+
+function openItemDialog(item) {
+  dialogItemId = item ? item.id : null;
+  const form = document.getElementById('item-form');
+  document.getElementById('item-dialog-title').textContent = item ? 'Edit item' : 'New inventory item';
+  form.elements.name.value = item ? item.name : '';
+  form.elements.category.value = item && CATEGORY_ORDER.includes(item.category) ? item.category : 'Other';
+  form.elements.unit.value = item ? item.unit : '';
+  form.elements.tracked.checked = item ? item.tracked : true;
+  form.elements.stock.value = item ? item.stock : 0;
+  form.elements.lowAt.value = item ? item.lowAt : 1;
+  document.getElementById('item-delete').hidden = !item;
+  document.getElementById('item-dialog').showModal();
+}
+
+document.getElementById('item-form').addEventListener('submit', (e) => {
+  e.preventDefault();
+  const f = e.target.elements;
+  const fields = {
+    name: f.name.value.trim(),
+    category: f.category.value,
+    unit: f.unit.value.trim(),
+    tracked: f.tracked.checked,
+    stock: Math.max(0, parseInt(f.stock.value, 10) || 0),
+    lowAt: Math.max(0, parseInt(f.lowAt.value, 10) || 0)
+  };
+  if (!fields.name) return;
+  const existing = state.items.find((x) => x.id === dialogItemId);
+  commit(existing ? Store.update(existing, fields) : Store.createItem(fields.name, fields));
+  document.getElementById('item-dialog').close();
+});
+
+document.getElementById('item-delete').addEventListener('click', () => {
+  if (dialogItemId) removeItems([dialogItemId]);
+  document.getElementById('item-dialog').close();
+});
+document.getElementById('item-cancel').addEventListener('click', () => {
+  document.getElementById('item-dialog').close();
+});
+
+onLongPress(document.getElementById('list'), '.row', (el) => openItemDialog(findItem(el)));
+onLongPress(document.getElementById('inv-grid'), '.tile', (el) => openItemDialog(findItem(el)));
+document.getElementById('inv-add').addEventListener('click', () => openItemDialog(null));
+
+document.getElementById('settings-btn').addEventListener('click', () => {
+  document.getElementById('settings-dialog').showModal();
+});
+document.getElementById('settings-close').addEventListener('click', () => {
+  document.getElementById('settings-dialog').close();
+});
+
+document.getElementById('export-btn').addEventListener('click', () => {
+  const blob = new Blob([Store.serialize(state.items)], { type: 'application/json' });
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(blob);
+  a.download = `grocery-backup-${new Date().toISOString().slice(0, 10)}.json`;
+  a.click();
+  URL.revokeObjectURL(a.href);
+});
+
+document.getElementById('import-file').addEventListener('change', async (e) => {
+  const file = e.target.files[0];
+  e.target.value = '';
+  if (!file) return;
+  let data;
+  try { data = JSON.parse(await file.text()); } catch { showBanner('Import failed: not valid JSON.'); return; }
+  if (!Store.validateImport(data)) { showBanner('Import failed: unrecognized file format.'); return; }
+  state.items = data.items;
+  render();
+  try { await DB.replaceAll(state.items); } catch (err) { showBanner('Save failed — changes may not persist.'); }
+  document.getElementById('settings-dialog').close();
+});
+
 async function boot() {
   await DB.init();
   if (!DB.persistent) showBanner("Changes won't be saved in this session.");
