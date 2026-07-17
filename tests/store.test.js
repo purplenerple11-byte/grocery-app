@@ -155,3 +155,22 @@ test('DB falls back to memory when IndexedDB unavailable', async () => {
   DB._mem = null;
   await DB.init('grocery-test');
 });
+
+test('validateImport rejects wrong value types', () => {
+  const good = Store.createItem('Milk');
+  assertEqual(Store.validateImport({ version: 1, items: [good] }), true);
+  assertEqual(Store.validateImport({ version: 1, items: [{ ...good, id: 42 }] }), false);
+  assertEqual(Store.validateImport({ version: 1, items: [{ ...good, stock: '3' }] }), false);
+  assertEqual(Store.validateImport({ version: 1, items: [{ ...good, listQty: '<b>1</b>' }] }), false);
+  assertEqual(Store.validateImport({ version: 1, items: [{ ...good, onList: 'yes' }] }), false);
+  assertEqual(Store.validateImport({ version: 1, items: [{ ...good, stock: NaN }] }), false);
+});
+
+test('update preserves untouched fields', () => {
+  const it = Store.createItem('Milk', { category: 'Dairy', unit: 'gal' });
+  const changed = Store.update(it, { stock: 5 });
+  assertEqual(changed.name, 'Milk');
+  assertEqual(changed.category, 'Dairy');
+  assertEqual(changed.unit, 'gal');
+  assertEqual(changed.id, it.id);
+});

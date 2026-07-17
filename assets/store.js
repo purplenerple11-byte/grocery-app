@@ -76,9 +76,16 @@ const Store = {
 
   validateImport(data) {
     if (!data || typeof data !== 'object' || data.version !== 1 || !Array.isArray(data.items)) return false;
-    const required = ['id', 'name', 'category', 'tracked', 'stock', 'lowAt', 'unit', 'onList', 'listQty', 'checked'];
-    return data.items.every((it) => it && typeof it === 'object' && required.every((k) => k in it));
-  }
+    const strings = ['id', 'name', 'category', 'unit'];
+    const numbers = ['stock', 'lowAt', 'listQty'];
+    const booleans = ['tracked', 'onList', 'checked'];
+    return data.items.every((it) =>
+      it && typeof it === 'object' &&
+      strings.every((k) => typeof it[k] === 'string') &&
+      numbers.every((k) => typeof it[k] === 'number' && Number.isFinite(it[k])) &&
+      booleans.every((k) => typeof it[k] === 'boolean')
+    );
+  },
 };
 
 /* IndexedDB adapter. Falls back to in-memory Map when IndexedDB is unavailable. */

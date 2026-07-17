@@ -178,13 +178,17 @@ function keepEditing(id) {
 }
 
 function onLongPress(container, selector, handler) {
-  let timer = null;
+  let timer = null, downX = 0, downY = 0;
   container.addEventListener('pointerdown', (e) => {
     const el = e.target.closest(selector);
-    if (!el) return;
+    if (!el || e.button !== 0) return;
+    downX = e.clientX; downY = e.clientY;
     timer = setTimeout(() => { timer = null; handler(el); }, 500);
   });
-  for (const ev of ['pointerup', 'pointermove', 'pointercancel', 'pointerleave']) {
+  container.addEventListener('pointermove', (e) => {
+    if (timer && Math.hypot(e.clientX - downX, e.clientY - downY) > 10) { clearTimeout(timer); timer = null; }
+  });
+  for (const ev of ['pointerup', 'pointercancel', 'pointerleave']) {
     container.addEventListener(ev, () => { clearTimeout(timer); timer = null; });
   }
 }
@@ -247,7 +251,7 @@ document.getElementById('export-btn').addEventListener('click', () => {
   a.href = URL.createObjectURL(blob);
   a.download = `grocery-backup-${new Date().toISOString().slice(0, 10)}.json`;
   a.click();
-  URL.revokeObjectURL(a.href);
+  setTimeout(() => URL.revokeObjectURL(a.href), 0);
 });
 
 document.getElementById('import-file').addEventListener('change', async (e) => {
@@ -257,9 +261,14 @@ document.getElementById('import-file').addEventListener('change', async (e) => {
   let data;
   try { data = JSON.parse(await file.text()); } catch { showBanner('Import failed: not valid JSON.'); return; }
   if (!Store.validateImport(data)) { showBanner('Import failed: unrecognized file format.'); return; }
+  try {
+    await DB.replaceAll(data.items);
+  } catch (err) {
+    showBanner('Import failed — data unchanged.');
+    return;
+  }
   state.items = data.items;
   render();
-  try { await DB.replaceAll(state.items); } catch (err) { showBanner('Save failed — changes may not persist.'); }
   document.getElementById('settings-dialog').close();
 });
 
