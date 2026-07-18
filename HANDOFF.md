@@ -79,11 +79,22 @@ python3 -m http.server 8000        # from repo root; service worker needs http
 ## Status
 
 **Shipped and live:** v1 (list, inventory sheet, trip loop, export/import, PWA),
-V2 (price + store history), V3 (saved meals). V4 item #1 (merge import) is built
-and verified locally. 49 tests passing.
+V2 (price + store history), V3 (saved meals). V4 items #1 (merge import) and #2
+(sorting + new categories) are built. 59 tests passing.
 
-**Awaiting the user's real-device review of V3 and V4-#1.** Checklists were given.
-If they report a bug, that takes priority over new work.
+**Awaiting the user's real-device review of V3, V4-#1, and V4-#2.** Checklists
+were given. If they report a bug, that takes priority over new work.
+
+**V4 item #2 verification note:** unit-test coverage for the new
+`Store.groupByCategory`/`CATEGORY_ORDER` logic is solid (59/59 passing, includes
+the new categories, the stock-bucket secondary sort, and the name-stable
+tie-break). Live in-browser click-through verification hit an unresolved,
+reproducible browser-tooling snag late in that session (see: heavy repeated
+probing in one tab eventually got network requests silently blocked —
+"[BLOCKED: Cookie/query string data]" — while a lightly-used sibling tab kept
+working fine throughout, including a full correct render of the real production
+code). Treat V4-#2 as logic-verified but **not yet click-verified on a real
+device** — extra care warranted on first use.
 
 **V4 item #1 — merge import (built).** Settings now has two import actions
 instead of one, a decision the user made — don't collapse them back:
@@ -133,18 +144,26 @@ the implementer where an item collides with existing code.
    added "Add from file" for the merge. Remaining sub-item: AI-generated *meals*
    with throwaway ids aren't remapped yet.
 
-2. **Sorting & schema expansion**
-   - *Sorting:* multi-tier sort in the render function. Primary: group by
-     category. Secondary: `stock > 0` to the top of the category block, `stock
-     === 0` to the bottom.
-   - ⚠ note: this also addresses the existing "list order reshuffles across
-     reloads" backlog item — same render path, do them together. The list view
-     shows only `onList` items, so decide whether the stock sort applies there,
-     to the inventory sheet, or both.
-   - *New categories:* append `Condiments`, `Spices`, `Drinks` to `CATEGORY_ORDER`
-     (`app.js:4`) and the `<select>` in `index.html`. Keeping them in
-     `CATEGORY_ORDER` is also what stops the existing "unknown category resets to
-     Other" bug for these three.
+2. **Sorting & schema expansion** — ✅ **BUILT** (see "V4 item #2" note above).
+   `groupByCategory` moved from `app.js` into `Store` (pure, now unit-tested) and
+   grew an optional `secondary(item)` bucket param. Design calls made, since the
+   spec text left "which view(s)" open:
+   - **Inventory sheet** (`renderSheet`) got the stock secondary sort — `stock >
+     0` bucket 0, `stock === 0` bucket 1, tie-broken by name. This is the literal
+     ask: items you have float to the top of each category block, out-of-stock
+     sinks to the bottom.
+   - **Shopping list** (`renderList`) got *no* stock secondary — just the
+     name-stable tie-break. Reasoning: the list already has V3's `.row.have`
+     dimming to de-emphasize stocked items; sorting stocked items to the top too
+     would fight that signal and bury what you actually still need to buy. This
+     also closes the pre-existing "list order reshuffles across reloads" backlog
+     item, since both views now tie-break deterministically instead of relying on
+     incidental array order.
+   - New categories `Condiments`, `Spices`, `Drinks` inserted between `Pantry`
+     and `Household` in `Store.CATEGORY_ORDER`, plus matching `<option>`s in
+     `index.html`. Being in `CATEGORY_ORDER` also fixes the pre-existing "unknown
+     category resets to Other" bug for these three specifically (not the general
+     case — a truly custom user category still falls back on edit).
 
 3. **UI & interaction tweaks**
    - *Slide-out button:* enlarge `#meals-tab` (height/width + padding) for an

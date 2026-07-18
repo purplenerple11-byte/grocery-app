@@ -6,7 +6,31 @@ function newId() {
   return crypto.randomUUID ? crypto.randomUUID() : Math.random().toString(36).slice(2) + Date.now();
 }
 
+/* Fixed display order for known categories; anything else (including future
+   user-added categories) sorts alphabetically after all of these. */
+const CATEGORY_ORDER = ['Produce', 'Dairy', 'Meat', 'Frozen', 'Pantry', 'Condiments', 'Spices', 'Drinks', 'Household', 'Other'];
+
 const Store = {
+  CATEGORY_ORDER,
+
+  /* Groups items by category (in CATEGORY_ORDER, unknown categories last and
+     alphabetical), then sorts within each category block. `secondary(item)`
+     returns a bucket number to sort ascending by (e.g. 0 = first); ties, and
+     items when no secondary is given, fall back to a name sort — so order is
+     stable across reloads instead of depending on incidental array position. */
+  groupByCategory(items, { secondary } = {}) {
+    const groups = new Map();
+    for (const it of items) {
+      if (!groups.has(it.category)) groups.set(it.category, []);
+      groups.get(it.category).push(it);
+    }
+    const rank = (c) => { const i = CATEGORY_ORDER.indexOf(c); return i === -1 ? CATEGORY_ORDER.length : i; };
+    const bucket = secondary || (() => 0);
+    for (const list of groups.values()) {
+      list.sort((a, b) => bucket(a) - bucket(b) || a.name.localeCompare(b.name));
+    }
+    return [...groups.entries()].sort((a, b) => rank(a[0]) - rank(b[0]) || a[0].localeCompare(b[0]));
+  },
   createItem(name, opts = {}) {
     const now = Date.now();
     return {

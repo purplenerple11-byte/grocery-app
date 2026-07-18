@@ -523,3 +523,51 @@ test('replaceAllWithMeals persists items and meals together', async () => {
   DB.persistent = true; DB._mem = null;
   await DB.init('grocery-test');
 });
+
+/* ---- Category order & grouping (V4 #2) ---- */
+
+test('CATEGORY_ORDER includes the new V4 categories', () => {
+  for (const c of ['Condiments', 'Spices', 'Drinks']) assert(Store.CATEGORY_ORDER.includes(c), `${c} missing from CATEGORY_ORDER`);
+  // Placed after Pantry, before Household — pantry-adjacent staples grouped together.
+  const idx = (c) => Store.CATEGORY_ORDER.indexOf(c);
+  assert(idx('Pantry') < idx('Condiments') && idx('Drinks') < idx('Household'), 'new categories sit between Pantry and Household');
+});
+
+test('groupByCategory orders by CATEGORY_ORDER, unknown categories last and alphabetical', () => {
+  const items = [
+    Store.createItem('Ketchup', { category: 'Condiments' }),
+    Store.createItem('Milk', { category: 'Dairy' }),
+    Store.createItem('Cola', { category: 'Drinks' }),
+    Store.createItem('Batteries', { category: 'Zzz-Unknown' }),
+    Store.createItem('Aardvark Food', { category: 'Aaa-Unknown' }),
+  ];
+  const cats = Store.groupByCategory(items).map(([c]) => c);
+  assertEqual(cats, ['Dairy', 'Condiments', 'Drinks', 'Aaa-Unknown', 'Zzz-Unknown'],
+    'known categories in CATEGORY_ORDER, unknowns after, alphabetical among themselves');
+});
+
+test('groupByCategory with no secondary is stable by name (fixes reload reshuffle)', () => {
+  const c = Store.createItem('Carrots', { category: 'Produce' });
+  const a = Store.createItem('Apples', { category: 'Produce' });
+  const b = Store.createItem('Bananas', { category: 'Produce' });
+  // Feed in a deliberately non-alphabetical array order.
+  const [, items] = Store.groupByCategory([c, a, b])[0];
+  assertEqual(items.map((i) => i.name), ['Apples', 'Bananas', 'Carrots'], 'name order regardless of input order');
+});
+
+test('groupByCategory secondary bucket sorts within a category, ties broken by name', () => {
+  const out1 = Store.createItem('Zucchini', { category: 'Produce', stock: 0 });
+  const out2 = Store.createItem('Apples', { category: 'Produce', stock: 0 });
+  const have = Store.createItem('Carrots', { category: 'Produce', stock: 5 });
+  const stockedFirst = { secondary: (it) => (it.stock > 0 ? 0 : 1) };
+  const [, items] = Store.groupByCategory([out1, out2, have], stockedFirst)[0];
+  assertEqual(items.map((i) => i.name), ['Carrots', 'Apples', 'Zucchini'],
+    'stock > 0 first, stock === 0 last, and the two zero-stock items tie-break by name');
+});
+
+test('groupByCategory does not mutate the input array', () => {
+  const items = [Store.createItem('B'), Store.createItem('A')];
+  const before = items.map((i) => i.name);
+  Store.groupByCategory(items);
+  assertEqual(items.map((i) => i.name), before, 'caller\'s array order untouched');
+});

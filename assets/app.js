@@ -1,20 +1,10 @@
 /* UI layer. All data changes go through Store pure functions, then commit()/removeItems() persist. */
 const state = { items: [], meals: [] };
 
-const CATEGORY_ORDER = ['Produce', 'Dairy', 'Meat', 'Frozen', 'Pantry', 'Household', 'Other'];
+const CATEGORY_ORDER = Store.CATEGORY_ORDER;
 
 function escapeHtml(s) {
   return String(s).replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
-}
-
-function groupByCategory(items) {
-  const groups = new Map();
-  for (const it of items) {
-    if (!groups.has(it.category)) groups.set(it.category, []);
-    groups.get(it.category).push(it);
-  }
-  const rank = (c) => { const i = CATEGORY_ORDER.indexOf(c); return i === -1 ? CATEGORY_ORDER.length : i; };
-  return [...groups.entries()].sort((a, b) => rank(a[0]) - rank(b[0]) || a[0].localeCompare(b[0]));
 }
 
 function formatPrice(n) {
@@ -66,7 +56,7 @@ function renderList() {
     onList.length ? `${onList.length} item${onList.length === 1 ? '' : 's'} · ${checkedCount} checked` : '';
   document.getElementById('complete-trip').hidden = checkedCount === 0;
 
-  listEl.innerHTML = groupByCategory(onList).map(([cat, items]) => `
+  listEl.innerHTML = Store.groupByCategory(onList).map(([cat, items]) => `
     <div class="cat">${escapeHtml(cat)}</div>
     ${items.map((it) => `
       <div class="row${it.checked ? ' done' : ''}${Store.hasEnough(it) ? ' have' : ''}" data-id="${it.id}">
@@ -92,7 +82,8 @@ function renderSheet() {
     (low ? `<span class="pill"><span class="dot low"></span>${low} low</span>` : '');
   document.getElementById('inv-add').hidden = !document.getElementById('sheet').classList.contains('open');
 
-  document.getElementById('inv-grid').innerHTML = groupByCategory(tracked).map(([cat, items]) => `
+  const stockedFirst = { secondary: (it) => (it.stock > 0 ? 0 : 1) };
+  document.getElementById('inv-grid').innerHTML = Store.groupByCategory(tracked, stockedFirst).map(([cat, items]) => `
     <div class="inv-cat">${escapeHtml(cat)}</div>
     <div class="tile-grid">
       ${items.map((it) => {
