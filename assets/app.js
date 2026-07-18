@@ -1,7 +1,7 @@
 /* UI layer. All data changes go through Store pure functions, then commit()/removeItems() persist. */
 const state = { items: [], meals: [] };
 
-const CATEGORY_ORDER = Store.CATEGORY_ORDER;
+// Uses the global CATEGORY_ORDER declared in store.js
 
 function escapeHtml(s) {
   return String(s).replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
