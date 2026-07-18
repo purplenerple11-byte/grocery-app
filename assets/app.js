@@ -314,52 +314,58 @@ function onLongPress(container, selector, handler) {
   }, true);
 }
 
-/* ── Swipe-to-remove: physics-based, finger-follows-object ── */
+/* ── Swipe-to-remove: hold to lift, drag to dismiss ──
+   Touch → short hold (120ms) → row pops up from the surface →
+   drag freely with finger → fling off or release to snap back. */
 (() => {
   const listEl = document.getElementById('list');
+  const HOLD_MS   = 120;   // ms before the row lifts
+  const DISMISS_PX = 80;   // drag distance that counts as a dismiss
+  const FLING_VEL  = 0.4;  // px/ms velocity that counts as a fling
 
   /* ── state ── */
-  let row = null;          // the DOM row being dragged
-  let originX, originY;    // pointerdown coords
-  let dx = 0, dy = 0;     // cumulative displacement from origin
-  let lifted = false;      // true once the gesture commits to a swipe
-  let pointerId = null;
+  let row = null;
+  let originX, originY;
+  let dx = 0, dy = 0;
+  let holdTimer = null;
+  let lifted = false;       // row is visually detached
+  let dragging = false;     // finger has moved while lifted
+  let aborted = false;      // gesture was cancelled (scroll, etc.)
 
-  /* velocity tracking — smoothed over last 3 samples */
-  const samples = [];      // { x, t }
-  const SAMPLE_WINDOW = 80; // ms — only keep recent samples
-
-  function trackVelocity(x) {
-    const now = performance.now();
-    samples.push({ x, t: now });
-    // prune old
-    while (samples.length > 1 && now - samples[0].t > SAMPLE_WINDOW) samples.shift();
+  /* velocity: ring buffer of recent pointer positions */
+  const vBuf = [];
+  const V_WINDOW = 80; // ms
+  function vTrack(x) {
+    const t = performance.now();
+    vBuf.push({ x, t });
+    while (vBuf.length > 1 && t - vBuf[0].t > V_WINDOW) vBuf.shift();
   }
-  function getVelocity() {
-    if (samples.length < 2) return 0;
-    const first = samples[0], last = samples[samples.length - 1];
-    const dt = last.t - first.t;
-    return dt > 0 ? (last.x - first.x) / dt : 0; // px/ms
+  function vGet() {
+    if (vBuf.length < 2) return 0;
+    const a = vBuf[0], b = vBuf[vBuf.length - 1];
+    const dt = b.t - a.t;
+    return dt > 0 ? (b.x - a.x) / dt : 0;
   }
 
-  /* ── visual helpers ── */
-  // Shadow grows with drag distance — near = tight, far = diffuse
-  function applyShadow(el, absDx) {
-    const t = Math.min(absDx / 160, 1);               // 0→1 over 160px
-    const blur = 8 + t * 24;                           // 8→32
-    const spread = t * 4;                              // 0→4
-    const yOff = 4 + t * 12;                           // 4→16
-    const alpha = 0.18 + t * 0.22;                     // .18→.40
+  /* ── visuals ── */
+  function liftShadow(el) {
+    // initial "pop up" shadow — row just left the surface
+    el.style.boxShadow = '0 6px 16px 2px rgba(0,0,0,.25)';
+  }
+  function dragShadow(el, absDx) {
+    const t = Math.min(absDx / 140, 1);
+    const blur  = 10 + t * 22;
+    const spread = 1 + t * 5;
+    const yOff  = 6 + t * 10;
+    const alpha = 0.25 + t * 0.20;
     el.style.boxShadow = `0 ${yOff}px ${blur}px ${spread}px rgba(0,0,0,${alpha})`;
   }
-
-  // Tilt: slight rotation toward the drag direction, max ±3°
-  function applyTilt(el, dxVal) {
+  function pose(el) {
     const maxRot = 3;
-    const rot = Math.max(-maxRot, Math.min(maxRot, dxVal * 0.02));
-    el.style.transform = `translate(${dxVal}px, ${dy * 0.3}px) rotate(${rot}deg)`;
+    const rot = Math.max(-maxRot, Math.min(maxRot, dx * 0.018));
+    el.style.transform = `translate(${dx}px, ${dy * 0.25}px) rotate(${rot}deg)`;
+    dragShadow(el, Math.abs(dx));
   }
-
   function clearInline(el) {
     el.style.transform = '';
     el.style.boxShadow = '';
@@ -368,83 +374,104 @@ function onLongPress(container, selector, handler) {
     el.classList.remove('lifted');
   }
 
+  /* ── lift: the row pops up from the list ── */
+  function liftRow() {
+    if (!row || aborted) return;
+    lifted = true;
+    row.classList.add('lifted');
+    // Animate the pop-up
+    row.style.transition = 'box-shadow 0.15s ease-out';
+    liftShadow(row);
+    // After the shadow settles, kill the transition so dragging is instant
+    setTimeout(() => { if (row) row.style.transition = 'none'; }, 160);
+  }
+
   /* ── pointer handlers ── */
   listEl.addEventListener('pointerdown', (e) => {
     if (e.button !== 0) return;
     const r = e.target.closest('.row');
     if (!r || e.target.closest('button, .stepper')) return;
+
     row = r;
     originX = e.clientX;
     originY = e.clientY;
     dx = 0; dy = 0;
     lifted = false;
-    pointerId = e.pointerId;
-    samples.length = 0;
-    trackVelocity(e.clientX);
-    row.style.transition = 'none';
+    dragging = false;
+    aborted = false;
+    vBuf.length = 0;
+    vTrack(e.clientX);
+
+    // Start the hold timer — row lifts after HOLD_MS
+    holdTimer = setTimeout(liftRow, HOLD_MS);
   });
 
   listEl.addEventListener('pointermove', (e) => {
-    if (!row) return;
+    if (!row || aborted) return;
     dx = e.clientX - originX;
     dy = e.clientY - originY;
-    trackVelocity(e.clientX);
+    vTrack(e.clientX);
 
-    // Decide: is this a horizontal swipe?
     if (!lifted) {
-      if (Math.abs(dx) > 8 && Math.abs(dx) > Math.abs(dy) * 1.4) {
-        lifted = true;
-        row.classList.add('lifted');
-        try { row.setPointerCapture(e.pointerId); } catch (_) {}
-      } else if (Math.abs(dy) > 12) {
-        // vertical scroll — abort
+      // Still waiting for the hold timer.
+      // If finger moves too far vertically → it's a scroll, abort.
+      if (Math.abs(dy) > 10) {
+        clearTimeout(holdTimer); holdTimer = null;
+        aborted = true;
         row = null;
         return;
+      }
+      // If finger moves horizontally a bit, lift immediately (don't wait)
+      if (Math.abs(dx) > 6) {
+        clearTimeout(holdTimer); holdTimer = null;
+        liftRow();
       } else {
-        return; // still deciding
+        return; // small movement, keep waiting
       }
     }
 
-    applyTilt(row, dx);
-    applyShadow(row, Math.abs(dx));
+    // Row is lifted — follow the finger
+    dragging = true;
+    try { row.setPointerCapture(e.pointerId); } catch (_) {}
+    pose(row);
     e.preventDefault();
   });
 
   function release(e) {
+    clearTimeout(holdTimer); holdTimer = null;
     if (!row) return;
     const el = row;
     row = null;
 
     if (!lifted) { clearInline(el); return; }
 
-    const vel = getVelocity();           // px/ms
+    const vel = vGet();
     const absVel = Math.abs(vel);
-    const flung = absVel > 0.5;
-    const pastThreshold = Math.abs(dx) > 100;
-    const dismiss = flung || pastThreshold;
+    const flung = absVel > FLING_VEL;
+    const pastThreshold = Math.abs(dx) > DISMISS_PX;
+    const dismiss = dragging && (flung || pastThreshold);
     const dir = (flung ? Math.sign(vel) : Math.sign(dx)) || -1;
 
     if (dismiss) {
-      // Fling off — continue with momentum
-      const flyDist = dir * (Math.abs(dx) + Math.max(absVel * 200, 180));
-      const flyTime = Math.min(0.35, Math.max(0.15, 180 / (absVel * 1000 + 1)));
-      el.style.transition = `transform ${flyTime}s ease-out, opacity ${flyTime}s ease-out`;
-      el.style.transform = `translate(${flyDist}px, ${dy * 0.3}px) rotate(${dir * 6}deg)`;
+      // Fling off — momentum-based
+      const flyDist = dir * (Math.abs(dx) + Math.max(absVel * 220, 200));
+      const flyTime = Math.min(0.32, Math.max(0.14, 160 / (absVel * 1000 + 1)));
+      el.style.transition = `transform ${flyTime}s ease-out, opacity ${flyTime}s ease-out, box-shadow ${flyTime}s ease-out`;
+      el.style.transform = `translate(${flyDist}px, ${dy * 0.25}px) rotate(${dir * 5}deg)`;
       el.style.opacity = '0';
+      el.style.boxShadow = '';
       const item = findItem(el);
       if (item) {
-        const ms = flyTime * 1000;
         setTimeout(() => {
           clearInline(el);
           commit(Store.update(item, { onList: false, checked: false, listQty: 1 }));
-        }, ms);
+        }, flyTime * 1000);
       }
     } else {
-      // Spring back — overshoot slightly for physicality
-      el.style.transition = 'transform 0.35s cubic-bezier(.34,1.56,.64,1), box-shadow 0.35s ease, opacity 0.3s ease';
+      // Spring back with slight overshoot
+      el.style.transition = 'transform 0.3s cubic-bezier(.34,1.56,.64,1), box-shadow 0.3s ease';
       el.style.transform = '';
       el.style.boxShadow = '';
-      el.style.opacity = '';
       el.addEventListener('transitionend', function cleanup() {
         el.removeEventListener('transitionend', cleanup);
         clearInline(el);
@@ -455,11 +482,11 @@ function onLongPress(container, selector, handler) {
   listEl.addEventListener('pointerup', release);
   listEl.addEventListener('pointercancel', release);
 
-  // Swallow the click that follows a swipe gesture
+  // Swallow the click that follows a drag gesture
   listEl.addEventListener('click', (e) => {
-    if (lifted) {
+    if (dragging) {
       e.stopPropagation(); e.preventDefault();
-      lifted = false;
+      dragging = false;
     }
   }, true);
 })();
