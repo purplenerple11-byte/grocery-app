@@ -82,9 +82,9 @@ function renderList() {
       <div class="row${it.checked ? ' done' : ''}${Store.hasEnough(it) ? ' have' : ''}" data-id="${it.id}">
         <button class="check" data-action="check" aria-label="Check off">✓</button>
         <span class="name">${escapeHtml(it.name)}</span>
-        ${it.unit ? `<span class="unit">${escapeHtml(it.unit)}</span>` : ''}
         ${Store.hasEnough(it) ? `<span class="have-note">have ${it.stock}</span>` : ''}
         ${it.tracked ? '' : '<button class="track-btn" data-action="track">track</button>'}
+        ${it.unit ? `<span class="unit">${escapeHtml(it.unit)}</span>` : ''}
         <span class="stepper">
           <button class="step-btn" data-action="qty-minus" aria-label="Less">−</button>
           <span class="qty">${it.listQty}</span>
@@ -104,7 +104,7 @@ function renderSheet() {
 
   const stockedFirst = { secondary: (it) => (it.stock > 0 ? 0 : 1) };
   document.getElementById('inv-grid').innerHTML = Store.groupByCategory(tracked, stockedFirst).map(([cat, items]) => `
-    <div class="inv-cat">${escapeHtml(cat)}</div>
+    <div class="inv-cat${typeof collapsedCats !== 'undefined' && collapsedCats.has(cat) ? ' collapsed' : ''}">${escapeHtml(cat)}</div>
     <div class="tile-grid">
       ${items.map((it) => {
         const status = Store.deriveStatus(it);
@@ -314,57 +314,88 @@ function onLongPress(container, selector, handler) {
   }, true);
 }
 
-/* Swipe-to-remove on shopping list rows */
+/* Swipe-to-remove on shopping list rows — bidirectional, floaty, with fling */
 (() => {
   const listEl = document.getElementById('list');
   let startX = null, startY = null, swipingRow = null, isSwiping = false;
-  
+  let lastX = 0, lastTime = 0, velocity = 0;
+  const THRESHOLD = 90;       // px: past this the row is dismissed on release
+  const FLING_VEL = 0.6;      // px/ms: velocity that counts as a fling
+
   listEl.addEventListener('pointerdown', (e) => {
     if (e.button !== 0) return;
     const row = e.target.closest('.row');
     if (!row || e.target.closest('button, .stepper')) return;
     startX = e.clientX;
     startY = e.clientY;
+    lastX = startX;
+    lastTime = Date.now();
+    velocity = 0;
     swipingRow = row;
     isSwiping = false;
     swipingRow.style.transition = 'none';
   });
-  
+
   listEl.addEventListener('pointermove', (e) => {
     if (!swipingRow || startX === null) return;
     const dx = e.clientX - startX;
     const dy = e.clientY - startY;
+
+    // Lock into horizontal swipe once intent is clear
     if (!isSwiping && Math.abs(dx) > 10 && Math.abs(dx) > Math.abs(dy)) {
       isSwiping = true;
+      swipingRow.classList.add('swiping');
       try { swipingRow.setPointerCapture(e.pointerId); } catch(err) {}
     }
+
     if (isSwiping) {
-      swipingRow.style.transform = `translateX(${Math.min(0, dx)}px)`; // left swipe only
+      // Track velocity for fling detection
+      const now = Date.now();
+      const dt = now - lastTime;
+      if (dt > 0) velocity = (e.clientX - lastX) / dt;
+      lastX = e.clientX;
+      lastTime = now;
+
+      // Allow both directions; slight scale up to look "lifted"
+      const progress = Math.min(Math.abs(dx) / THRESHOLD, 1);
+      const scale = 1 + progress * 0.02;
+      swipingRow.style.transform = `translateX(${dx}px) scale(${scale})`;
       e.preventDefault();
     }
   });
-  
+
   const endSwipe = (e) => {
     if (!swipingRow) return;
     const dx = startX !== null ? e.clientX - startX : 0;
     const row = swipingRow;
     swipingRow = null;
     startX = null;
-    
+
     if (isSwiping) {
-      row.style.transition = 'transform 0.2s ease';
-      if (dx < -70) {
-        row.style.transform = `translateX(-100%)`;
+      const absVel = Math.abs(velocity);
+      const flung = absVel > FLING_VEL;
+      const pastThreshold = Math.abs(dx) > THRESHOLD;
+      const dismiss = flung || pastThreshold;
+      const direction = (flung ? Math.sign(velocity) : Math.sign(dx)) || -1;
+
+      row.style.transition = 'transform 0.25s ease, opacity 0.25s ease';
+      row.classList.remove('swiping');
+
+      if (dismiss) {
+        row.style.transform = `translateX(${direction * 110}%)`;
+        row.style.opacity = '0';
         const item = findItem(row);
         if (item) {
-          setTimeout(() => commit(Store.update(item, { onList: false, checked: false, listQty: 1 })), 200);
+          setTimeout(() => commit(Store.update(item, { onList: false, checked: false, listQty: 1 })), 250);
         }
       } else {
+        // Snap back
         row.style.transform = '';
+        row.style.opacity = '';
       }
     }
   };
-  
+
   listEl.addEventListener('pointerup', endSwipe);
   listEl.addEventListener('pointercancel', endSwipe);
   listEl.addEventListener('click', (e) => {
@@ -374,6 +405,25 @@ function onLongPress(container, selector, handler) {
     }
   }, true);
 })();
+
+/* Collapsible inventory categories */
+const collapsedCats = new Set();
+
+document.getElementById('inv-grid').addEventListener('click', (e) => {
+  const catEl = e.target.closest('.inv-cat');
+  if (catEl) {
+    const catName = catEl.textContent.replace(/\s*▾\s*$/, '').trim();
+    if (collapsedCats.has(catName)) {
+      collapsedCats.delete(catName);
+      catEl.classList.remove('collapsed');
+    } else {
+      collapsedCats.add(catName);
+      catEl.classList.add('collapsed');
+    }
+    return;
+  }
+  // Existing tile actions handled below
+});
 
 let dialogItemId = null; // null = creating a new item
 
