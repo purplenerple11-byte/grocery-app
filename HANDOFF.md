@@ -204,7 +204,7 @@ the implementer where an item collides with existing code.
      intentional reversal, not a contradiction — the "have N" dimming on the list
      may become redundant once pruning moves into this modal.
 
-5. **Intelligent Input Auto-Completion**
+5. ~~**Intelligent Input Auto-Completion**~~ (Built)
    - *The Issue:* Typing an item name in the quick-add field blindly creates a new object instead of querying the existing database, leading to duplicated entries (e.g., creating a new "lemons" when "Lemons" is already tracked).
    - *The Fix:* Transform the standard text input into a searchable combobox to catch existing items before creation.
    - *Filtering Logic:* Attach an `onInput` event listener to the text field. As characters are typed, convert the string to lowercase and run a `.filter()` against the `items` array, returning any `name` that includes the current input string.
