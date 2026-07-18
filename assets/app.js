@@ -328,9 +328,9 @@ function onLongPress(container, selector, handler) {
   let originX, originY;
   let dx = 0, dy = 0;
   let holdTimer = null;
-  let lifted = false;       // row is visually detached
-  let dragging = false;     // finger has moved while lifted
-  let aborted = false;      // gesture was cancelled (scroll, etc.)
+  let lifted = false;
+  let dragging = false;
+  let aborted = false;
 
   /* velocity: ring buffer of recent pointer positions */
   const vBuf = [];
@@ -347,9 +347,8 @@ function onLongPress(container, selector, handler) {
     return dt > 0 ? (b.x - a.x) / dt : 0;
   }
 
-  /* ── visuals ── */
+  /* ── visuals (animations unchanged) ── */
   function liftShadow(el) {
-    // initial "pop up" shadow — row just left the surface
     el.style.boxShadow = '0 6px 16px 2px rgba(0,0,0,.25)';
   }
   function dragShadow(el, absDx) {
@@ -371,7 +370,23 @@ function onLongPress(container, selector, handler) {
     el.style.boxShadow = '';
     el.style.transition = '';
     el.style.opacity = '';
+    el.style.touchAction = '';   // restore CSS touch-action: pan-y
     el.classList.remove('lifted');
+  }
+
+  /* Full state reset — called on every pointerdown so stale flags from
+     a previous gesture (especially one killed by pointercancel) can never
+     leak into the next interaction. */
+  function resetState() {
+    if (holdTimer) { clearTimeout(holdTimer); holdTimer = null; }
+    // If a previous row was left in a dirty state, clean it
+    if (row) clearInline(row);
+    row = null;
+    dx = 0; dy = 0;
+    lifted = false;
+    dragging = false;
+    aborted = false;
+    vBuf.length = 0;
   }
 
   /* ── lift: the row pops up from the list ── */
@@ -379,6 +394,8 @@ function onLongPress(container, selector, handler) {
     if (!row || aborted) return;
     lifted = true;
     row.classList.add('lifted');
+    // Lock out the browser's touch handling entirely once lifted
+    row.style.touchAction = 'none';
     // Animate the pop-up
     row.style.transition = 'box-shadow 0.15s ease-out';
     liftShadow(row);
@@ -392,14 +409,11 @@ function onLongPress(container, selector, handler) {
     const r = e.target.closest('.row');
     if (!r || e.target.closest('button, .stepper')) return;
 
+    resetState();
+
     row = r;
     originX = e.clientX;
     originY = e.clientY;
-    dx = 0; dy = 0;
-    lifted = false;
-    dragging = false;
-    aborted = false;
-    vBuf.length = 0;
     vTrack(e.clientX);
 
     // Start the hold timer — row lifts after HOLD_MS
@@ -414,20 +428,21 @@ function onLongPress(container, selector, handler) {
 
     if (!lifted) {
       // Still waiting for the hold timer.
-      // If finger moves too far vertically → it's a scroll, abort.
       if (Math.abs(dy) > 10) {
+        // Vertical scroll — abort entirely
         clearTimeout(holdTimer); holdTimer = null;
         aborted = true;
         row = null;
         return;
       }
-      // If finger moves horizontally a bit, lift immediately (don't wait)
       if (Math.abs(dx) > 6) {
+        // Horizontal intent — lift immediately, don't wait for timer
         clearTimeout(holdTimer); holdTimer = null;
         liftRow();
-      } else {
-        return; // small movement, keep waiting
+        // preventDefault now so the browser doesn't steal the gesture
+        e.preventDefault();
       }
+      return;
     }
 
     // Row is lifted — follow the finger
@@ -437,13 +452,23 @@ function onLongPress(container, selector, handler) {
     e.preventDefault();
   });
 
-  function release(e) {
-    clearTimeout(holdTimer); holdTimer = null;
-    if (!row) return;
+  function release() {
+    if (holdTimer) { clearTimeout(holdTimer); holdTimer = null; }
+    if (!row) {
+      // No row in progress — but make sure flags are clean
+      lifted = false;
+      dragging = false;
+      return;
+    }
     const el = row;
     row = null;
 
-    if (!lifted) { clearInline(el); return; }
+    if (!lifted) {
+      clearInline(el);
+      lifted = false;
+      dragging = false;
+      return;
+    }
 
     const vel = vGet();
     const absVel = Math.abs(vel);
@@ -477,10 +502,24 @@ function onLongPress(container, selector, handler) {
         clearInline(el);
       });
     }
+
+    // Reset flags AFTER the animation is queued but before the next gesture
+    // (dragging stays true briefly so the click swallower can catch it)
   }
 
   listEl.addEventListener('pointerup', release);
-  listEl.addEventListener('pointercancel', release);
+  listEl.addEventListener('pointercancel', () => {
+    // Browser stole the gesture (e.g., decided to scroll).
+    // Clean up everything so the next touch starts fresh.
+    if (holdTimer) { clearTimeout(holdTimer); holdTimer = null; }
+    if (row) {
+      clearInline(row);
+      row = null;
+    }
+    lifted = false;
+    dragging = false;
+    aborted = false;
+  });
 
   // Swallow the click that follows a drag gesture
   listEl.addEventListener('click', (e) => {
