@@ -187,7 +187,7 @@ the implementer where an item collides with existing code.
      rendered just before `.stepper`, so units sit right-aligned next to the
      minus button instead of floating after the item name.
 
-4. **Meal selection pre-flight modal**
+4. ~~**Meal selection pre-flight modal**~~ (Built)
    - *Issue:* appending all meal components creates redundant purchases and forces
      manual cleanup of ingredients you already have.
    - *Fix:* intercept the meal-selection click with an intermediate modal / bottom
