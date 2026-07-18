@@ -155,13 +155,60 @@ async function saveMeals() {
   }
 }
 
+const addInput = document.getElementById('add-input');
+const autocompleteList = document.getElementById('autocomplete-list');
+
+addInput.addEventListener('input', () => {
+  const val = addInput.value.trim().toLowerCase();
+  if (!val) {
+    autocompleteList.hidden = true;
+    return;
+  }
+  const matches = state.items.filter(it => it.name.toLowerCase().includes(val));
+  if (!matches.length) {
+    autocompleteList.hidden = true;
+    return;
+  }
+  autocompleteList.innerHTML = matches.map(it => `
+    <div class="autocomplete-item" data-id="${it.id}">
+      <span class="autocomplete-name">${escapeHtml(it.name)}</span>
+      ${it.tracked ? `<span class="autocomplete-stock">Stock: ${it.stock}</span>` : ''}
+    </div>
+  `).join('');
+  autocompleteList.hidden = false;
+});
+
+// Close dropdown if clicking outside
+document.addEventListener('click', (e) => {
+  if (e.target !== addInput) autocompleteList.hidden = true;
+});
+
+autocompleteList.addEventListener('click', (e) => {
+  const el = e.target.closest('.autocomplete-item');
+  if (!el) return;
+  const item = state.items.find(it => it.id === el.dataset.id);
+  if (item) {
+    commit(Store.update(item, { onList: true, checked: false }));
+    addInput.value = '';
+    autocompleteList.hidden = true;
+  }
+});
+
 document.getElementById('add-form').addEventListener('submit', (e) => {
   e.preventDefault();
-  const input = document.getElementById('add-input');
-  const name = input.value.trim();
+  const name = addInput.value.trim();
   if (!name) return;
-  commit(Store.createItem(name, { onList: true }));
-  input.value = '';
+  
+  // Creation Routing: exact match check
+  const existing = state.items.find(it => it.name.toLowerCase() === name.toLowerCase());
+  if (existing) {
+    commit(Store.update(existing, { onList: true, checked: false }));
+  } else {
+    commit(Store.createItem(name, { onList: true }));
+  }
+  
+  addInput.value = '';
+  autocompleteList.hidden = true;
 });
 
 document.getElementById('banner-dismiss').addEventListener('click', () => {

@@ -18,7 +18,12 @@
   <button id="settings-btn" aria-label="Settings">⚙</button>
 </header>
 
-<form id="add-form"><input id="add-input" placeholder="＋ Add item…" autocomplete="off" aria-label="Add item"></form>
+<form id="add-form">
+  <div class="autocomplete-wrapper">
+    <input id="add-input" placeholder="＋ Add item…" autocomplete="off" aria-label="Add item">
+    <div id="autocomplete-list" class="autocomplete-items" hidden></div>
+  </div>
+</form>
 
 <main id="list"></main>
 

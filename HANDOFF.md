@@ -204,6 +204,14 @@ the implementer where an item collides with existing code.
      intentional reversal, not a contradiction — the "have N" dimming on the list
      may become redundant once pruning moves into this modal.
 
+5. **Intelligent Input Auto-Completion**
+   - *The Issue:* Typing an item name in the quick-add field blindly creates a new object instead of querying the existing database, leading to duplicated entries (e.g., creating a new "lemons" when "Lemons" is already tracked).
+   - *The Fix:* Transform the standard text input into a searchable combobox to catch existing items before creation.
+   - *Filtering Logic:* Attach an `onInput` event listener to the text field. As characters are typed, convert the string to lowercase and run a `.filter()` against the `items` array, returning any `name` that includes the current input string.
+   - *Dropdown UI:* Render the matched results in an absolute-positioned list directly below the input field. Build a custom floating `div` for the dropdown menu rather than relying on the native HTML `<datalist>` tag.
+   - *Selection Routing:* If the user taps a suggested item from the dropdown, intercept the submit action. Retrieve that item's UUID, update its `onList` boolean to `true`, and clear the input field.
+   - *Creation Routing:* Only execute the new item generation payload if the user submits the form and the exact string does not match an existing item in the array.
+
 **Backlog** (non-blocking, from the v1 final review):
 - Editing an item whose category isn't in `CATEGORY_ORDER` silently resets it to
   "Other" — but the spec calls categories user-extendable.
