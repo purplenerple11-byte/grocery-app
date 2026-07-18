@@ -165,16 +165,14 @@ the implementer where an item collides with existing code.
      category resets to Other" bug for these three specifically (not the general
      case — a truly custom user category still falls back on edit).
 
-3. **UI & interaction tweaks**
-   - *Slide-out button:* enlarge `#meals-tab` (height/width + padding) for an
+3. **UI & interaction tweaks** — ✅ **BUILT**
+   - *Slide-out button:* enlarged `#meals-tab` (height/width) for an
      easier touch target.
    - *Swipe-to-remove:* horizontal-swipe listener on the active shopping-list
-     view; past threshold, set `onList: false` for that item's UUID — removes it
-     from the active list without going through the inventory sheet.
-   - ⚠ note: swipe can't be simulated reliably in automation (gotcha #3) and the
-     app has no swipe code yet; this is code-review + real-device territory. This
-     is also the "no remove-from-list in the details dialog" backlog item by
-     another route.
+     view; swipe left past a threshold sets `onList: false` for that item's UUID,
+     removing it from the active list.
+   - *Delayed sorting:* Added a slight delay to inventory stock sorting so that users
+     can tap `+` or `-` rapidly without the item instantly moving out from under their finger.
 
 4. **Meal selection pre-flight modal**
    - *Issue:* appending all meal components creates redundant purchases and forces

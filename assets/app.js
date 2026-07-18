@@ -25,10 +25,29 @@ function findItem(el) {
   return state.items.find((x) => x.id === id);
 }
 
-async function commit(item) {
+let renderTimer = null;
+function scheduleRender() {
+  if (renderTimer) clearTimeout(renderTimer);
+  renderTimer = setTimeout(() => {
+    renderTimer = null;
+    render();
+  }, 1500);
+}
+function cancelScheduledRender() {
+  if (renderTimer) { clearTimeout(renderTimer); renderTimer = null; }
+}
+
+async function commit(item, { deferRender = false } = {}) {
   const i = state.items.findIndex((x) => x.id === item.id);
   if (i >= 0) state.items[i] = item; else state.items.push(item);
-  render();
+  
+  if (deferRender) {
+    scheduleRender();
+  } else {
+    cancelScheduledRender();
+    render();
+  }
+  
   try {
     await DB.put(item);
   } catch (e) {
@@ -43,6 +62,7 @@ async function removeItems(ids) {
   const pruned = Store.pruneMeals(state.meals, state.items);
   const mealsChanged = pruned.some((m, i) => m !== state.meals[i]);
   state.meals = pruned;
+  cancelScheduledRender();
   render();
   try { for (const id of ids) await DB.delete(id); } catch (e) { showBanner('Save failed — changes may not persist.'); }
   if (mealsChanged) await saveMeals();
@@ -221,8 +241,19 @@ document.getElementById('inv-grid').addEventListener('click', (e) => {
   if (!actionEl) return;
   const item = findItem(actionEl);
   const action = actionEl.dataset.action;
-  if (action === 'stock-minus') { commit(Store.adjustStock(item, -1)); keepEditing(item.id); return; }
-  if (action === 'stock-plus') { commit(Store.adjustStock(item, 1)); keepEditing(item.id); return; }
+  if (action === 'stock-minus' || action === 'stock-plus') {
+    const nextItem = Store.adjustStock(item, action === 'stock-plus' ? 1 : -1);
+    commit(nextItem, { deferRender: true });
+    
+    // Immediate visual update of count and status dot
+    actionEl.parentElement.querySelector('.count').textContent = nextItem.stock;
+    const dot = actionEl.parentElement.querySelector('.dot');
+    const status = Store.deriveStatus(nextItem);
+    dot.className = `dot ${status === 'stocked' ? 'ok' : status}`;
+    
+    keepEditing(nextItem.id);
+    return;
+  }
   if (action === 'count') {
     const tile = actionEl.closest('.tile');
     document.querySelectorAll('.tile.editing').forEach((t) => t !== tile && t.classList.remove('editing'));
@@ -282,6 +313,67 @@ function onLongPress(container, selector, handler) {
     e.stopPropagation(); e.preventDefault();
   }, true);
 }
+
+/* Swipe-to-remove on shopping list rows */
+(() => {
+  const listEl = document.getElementById('list');
+  let startX = null, startY = null, swipingRow = null, isSwiping = false;
+  
+  listEl.addEventListener('pointerdown', (e) => {
+    if (e.button !== 0) return;
+    const row = e.target.closest('.row');
+    if (!row || e.target.closest('button, .stepper')) return;
+    startX = e.clientX;
+    startY = e.clientY;
+    swipingRow = row;
+    isSwiping = false;
+    swipingRow.style.transition = 'none';
+  });
+  
+  listEl.addEventListener('pointermove', (e) => {
+    if (!swipingRow || startX === null) return;
+    const dx = e.clientX - startX;
+    const dy = e.clientY - startY;
+    if (!isSwiping && Math.abs(dx) > 10 && Math.abs(dx) > Math.abs(dy)) {
+      isSwiping = true;
+      try { swipingRow.setPointerCapture(e.pointerId); } catch(err) {}
+    }
+    if (isSwiping) {
+      swipingRow.style.transform = `translateX(${Math.min(0, dx)}px)`; // left swipe only
+      e.preventDefault();
+    }
+  });
+  
+  const endSwipe = (e) => {
+    if (!swipingRow) return;
+    const dx = startX !== null ? e.clientX - startX : 0;
+    const row = swipingRow;
+    swipingRow = null;
+    startX = null;
+    
+    if (isSwiping) {
+      row.style.transition = 'transform 0.2s ease';
+      if (dx < -70) {
+        row.style.transform = `translateX(-100%)`;
+        const item = findItem(row);
+        if (item) {
+          setTimeout(() => commit(Store.update(item, { onList: false, checked: false, listQty: 1 })), 200);
+        }
+      } else {
+        row.style.transform = '';
+      }
+    }
+  };
+  
+  listEl.addEventListener('pointerup', endSwipe);
+  listEl.addEventListener('pointercancel', endSwipe);
+  listEl.addEventListener('click', (e) => {
+    if (isSwiping) {
+      e.stopPropagation(); e.preventDefault();
+      isSwiping = false;
+    }
+  }, true);
+})();
 
 let dialogItemId = null; // null = creating a new item
 

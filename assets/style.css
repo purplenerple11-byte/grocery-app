@@ -114,12 +114,12 @@ button { font-family: var(--sans); cursor: pointer; }
    list's left edge on desktop the way it does on a phone. */
 #meals-tab {
   position: fixed; top: 50%; left: max(0px, calc(50% - 240px)); transform: translateY(-50%);
-  z-index: 6; width: 17px; height: 66px;
+  z-index: 6; width: 28px; height: 84px;
   background: var(--surface-2); border: 1px solid var(--hairline); border-left: none;
-  border-radius: 0 10px 10px 0; padding: 0;
+  border-radius: 0 12px 12px 0; padding: 0;
   display: flex; align-items: center; justify-content: center;
 }
-#meals-tab .tab-grip { width: 3px; height: 26px; background: var(--hairline); border-radius: 2px; }
+#meals-tab .tab-grip { width: 4px; height: 32px; background: var(--hairline); border-radius: 2px; }
 #meals-tab[aria-expanded="true"] { opacity: 0; pointer-events: none; }
 
 #meals-scrim { position: fixed; inset: 0; z-index: 14; background: rgba(0, 0, 0, .45); }
