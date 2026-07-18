@@ -166,13 +166,26 @@ the implementer where an item collides with existing code.
      case — a truly custom user category still falls back on edit).
 
 3. **UI & interaction tweaks** — ✅ **BUILT**
-   - *Slide-out button:* enlarged `#meals-tab` (height/width) for an
-     easier touch target.
-   - *Swipe-to-remove:* horizontal-swipe listener on the active shopping-list
-     view; swipe left past a threshold sets `onList: false` for that item's UUID,
-     removing it from the active list.
-   - *Delayed sorting:* Added a slight delay to inventory stock sorting so that users
-     can tap `+` or `-` rapidly without the item instantly moving out from under their finger.
+   - *Slide-out button:* enlarged `#meals-tab` (28×84px, was 17×66) for an
+     easier touch target on phone.
+   - *Swipe-to-remove:* bidirectional swipe on shopping-list rows. The row
+     visually "lifts" (shadow + scale + muted opacity via `.row.swiping`), can
+     be flung in either direction or dragged past a 90px threshold. Velocity
+     detection (>0.6 px/ms) counts as a fling even below the distance threshold.
+     On release the row either animates off-screen and commits
+     `{ onList: false }`, or snaps back. This also closes the backlog item
+     "no remove-from-list in the details dialog."
+   - *Collapsible inventory categories:* tapping an `.inv-cat` header toggles
+     `.collapsed` which hides the adjacent `.tile-grid` via CSS. State is held
+     in a `collapsedCats` Set (in-memory only, resets on reload) and re-applied
+     after `renderSheet()` rebuilds the DOM. Chevron rotates to indicate state.
+   - *Delayed sorting:* `commit()` gained a `{ deferRender }` option; stock
+     `+`/`-` buttons use it to defer `render()` by 1.5 s while updating the
+     count and dot color inline, so the tile doesn't jump while the user is
+     still tapping.
+   - *Unit alignment:* `.row .name` is now `flex: 1` and the `.unit` span is
+     rendered just before `.stepper`, so units sit right-aligned next to the
+     minus button instead of floating after the item name.
 
 4. **Meal selection pre-flight modal**
    - *Issue:* appending all meal components creates redundant purchases and forces
@@ -194,8 +207,10 @@ the implementer where an item collides with existing code.
 **Backlog** (non-blocking, from the v1 final review):
 - Editing an item whose category isn't in `CATEGORY_ORDER` silently resets it to
   "Other" — but the spec calls categories user-extendable.
-- No "remove from list" in the details dialog (only Delete).
-- List order reshuffles across reloads (no stable sort within a category).
+- ~~No "remove from list" in the details dialog (only Delete).~~ Resolved by
+  swipe-to-remove (V4 item #3).
+- ~~List order reshuffles across reloads (no stable sort within a category).~~
+  Resolved by V4 item #2 (deterministic name-stable tie-break).
 - Export omits the `settings` key the spec mentions.
 - Retry-once on failed writes only applies to `commit`, not `replaceAll`/`delete`.
 - SW precaches with default HTTP cache semantics; `cache: 'reload'` would pin it.
