@@ -694,6 +694,7 @@ document.getElementById('meals-list').addEventListener('click', (e) => {
     return `
       <label class="preflight-row ${staged ? '' : 'dimmed'}">
         <input type="checkbox" name="itemIds" value="${it.id}" ${staged ? 'checked' : ''}>
+        <span class="preflight-check ${staged ? 'checked' : ''}">✓</span>
         <span class="preflight-name">${escapeHtml(it.name)}</span>
         <span class="preflight-stock">Stock: ${it.stock}</span>
       </label>
@@ -709,7 +710,11 @@ document.getElementById('preflight-cancel').addEventListener('click', () => {
 
 document.getElementById('preflight-items').addEventListener('change', (e) => {
   if (e.target.tagName === 'INPUT') {
-    e.target.closest('label').classList.toggle('dimmed', !e.target.checked);
+    const label = e.target.closest('label');
+    const checked = e.target.checked;
+    label.classList.toggle('dimmed', !checked);
+    const checkEl = label.querySelector('.preflight-check');
+    if (checkEl) checkEl.classList.toggle('checked', checked);
   }
 });
 

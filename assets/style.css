@@ -225,12 +225,22 @@ dialog menu { display: flex; flex-direction: column; gap: 8px; margin-top: 14px;
   background: var(--surface); padding: 4px 0; margin-bottom: 12px;
 }
 .preflight-row {
-  display: flex; align-items: center; gap: 8px; padding: 8px 12px;
+  display: flex; align-items: center; gap: 11px; padding: 8px 12px;
   border-bottom: 1px solid var(--hairline);
   cursor: pointer;
 }
 .preflight-row:last-child { border-bottom: none; }
-.preflight-row input { flex: none; width: 18px; height: 18px; margin-top: 0; }
+.preflight-row input[type="checkbox"] { display: none; }
+.preflight-check {
+  width: 22px; height: 22px; border-radius: 50%; border: 1.5px solid var(--muted);
+  background: none; flex: none; color: transparent; font-size: 13px; line-height: 1;
+  display: inline-flex; align-items: center; justify-content: center;
+  transition: background .15s ease, border-color .15s ease, color .15s ease;
+  user-select: none; -webkit-user-select: none;
+}
+.preflight-check.checked {
+  background: var(--clay); border-color: var(--clay); color: var(--canvas);
+}
 .preflight-name { flex: 1; font-family: var(--serif); font-size: 16px; }
 .preflight-stock { flex: none; font-size: 12px; color: var(--muted); background: var(--canvas); padding: 2px 6px; border-radius: 999px; }
 .preflight-row.dimmed .preflight-name { color: var(--muted); }
