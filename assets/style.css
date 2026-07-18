@@ -203,6 +203,23 @@ dialog menu { display: flex; flex-direction: column; gap: 8px; margin-top: 14px;
 
 /* Trip dialog: one price row per bought item */
 #trip-prices { max-height: 44vh; overflow-y: auto; }
+
+/* Pre-flight meal dialog */
+.preflight-list {
+  max-height: 40vh; overflow-y: auto;
+  border: 1px solid var(--hairline); border-radius: 8px;
+  background: var(--surface); padding: 4px 0; margin-bottom: 12px;
+}
+.preflight-row {
+  display: flex; align-items: center; gap: 8px; padding: 8px 12px;
+  border-bottom: 1px solid var(--hairline);
+  cursor: pointer;
+}
+.preflight-row:last-child { border-bottom: none; }
+.preflight-row input { flex: none; width: 18px; height: 18px; margin-top: 0; }
+.preflight-name { flex: 1; font-family: var(--serif); font-size: 16px; }
+.preflight-stock { flex: none; font-size: 12px; color: var(--muted); background: var(--canvas); padding: 2px 6px; border-radius: 999px; }
+.preflight-row.dimmed .preflight-name { color: var(--muted); }
 .trip-row { display: flex; align-items: center; gap: 10px; margin-bottom: 8px; }
 .trip-row .trip-name { font-family: var(--serif); font-size: 15px; flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .trip-row .trip-qty { font-size: 11px; color: var(--muted); flex: none; }

@@ -617,13 +617,61 @@ document.getElementById('meals-list').addEventListener('click', (e) => {
   if (!el) return;
   const meal = state.meals.find((m) => m.id === el.dataset.mealId);
   if (!meal) return;
-  const { total, short } = Store.mealAddStats(meal, state.items);
-  if (!total) { showBanner(`${meal.name}: its items are all gone.`); return; }
-  state.items = Store.addMealToList(state.items, meal);
-  render();
-  DB.replaceAll(state.items).catch(() => showBanner('Save failed — changes may not persist.'));
-  setDrawer(false);
-  showBanner(short ? `${meal.name}: ${total} added, ${short} short.` : `${meal.name}: ${total} added — you have it all.`);
+  
+  const items = meal.itemIds.map(id => state.items.find(i => i.id === id)).filter(Boolean);
+  if (!items.length) { showBanner(`${meal.name}: its items are all gone.`); return; }
+
+  // Sort: out of stock first, then alphabetically
+  items.sort((a, b) => {
+    if (a.stock === 0 && b.stock !== 0) return -1;
+    if (b.stock === 0 && a.stock !== 0) return 1;
+    return a.name.localeCompare(b.name);
+  });
+
+  document.getElementById('preflight-dialog-title').textContent = meal.name;
+  
+  document.getElementById('preflight-items').innerHTML = items.map(it => {
+    const staged = it.stock === 0 || it.stock <= it.lowAt;
+    return `
+      <label class="preflight-row ${staged ? '' : 'dimmed'}">
+        <input type="checkbox" name="itemIds" value="${it.id}" ${staged ? 'checked' : ''}>
+        <span class="preflight-name">${escapeHtml(it.name)}</span>
+        <span class="preflight-stock">Stock: ${it.stock}</span>
+      </label>
+    `;
+  }).join('');
+  
+  document.getElementById('preflight-dialog').showModal();
+});
+
+document.getElementById('preflight-cancel').addEventListener('click', () => {
+  document.getElementById('preflight-dialog').close();
+});
+
+document.getElementById('preflight-items').addEventListener('change', (e) => {
+  if (e.target.tagName === 'INPUT') {
+    e.target.closest('label').classList.toggle('dimmed', !e.target.checked);
+  }
+});
+
+document.getElementById('preflight-form').addEventListener('submit', async (e) => {
+  e.preventDefault();
+  
+  const form = e.target;
+  const checkboxes = form.querySelectorAll('input[name="itemIds"]:checked');
+  const selectedIds = Array.from(checkboxes).map(cb => cb.value);
+  
+  if (selectedIds.length > 0) {
+    state.items = state.items.map(it => 
+      selectedIds.includes(it.id) ? Store.update(it, { onList: true, checked: false }) : it
+    );
+    render();
+    DB.replaceAll(state.items).catch(() => showBanner('Save failed — changes may not persist.'));
+    showBanner(`Added ${selectedIds.length} item(s) from ${document.getElementById('preflight-dialog-title').textContent}.`);
+  }
+  
+  document.getElementById('preflight-dialog').close();
+  setDrawer(false); // Close meals drawer
 });
 
 let dialogMealId = null; // null = saving the current list as a new meal
