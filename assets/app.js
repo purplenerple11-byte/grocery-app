@@ -314,94 +314,152 @@ function onLongPress(container, selector, handler) {
   }, true);
 }
 
-/* Swipe-to-remove on shopping list rows — bidirectional, floaty, with fling */
+/* ── Swipe-to-remove: physics-based, finger-follows-object ── */
 (() => {
   const listEl = document.getElementById('list');
-  let startX = null, startY = null, swipingRow = null, isSwiping = false;
-  let lastX = 0, lastTime = 0, velocity = 0;
-  const THRESHOLD = 90;       // px: past this the row is dismissed on release
-  const FLING_VEL = 0.6;      // px/ms: velocity that counts as a fling
 
+  /* ── state ── */
+  let row = null;          // the DOM row being dragged
+  let originX, originY;    // pointerdown coords
+  let dx = 0, dy = 0;     // cumulative displacement from origin
+  let lifted = false;      // true once the gesture commits to a swipe
+  let pointerId = null;
+
+  /* velocity tracking — smoothed over last 3 samples */
+  const samples = [];      // { x, t }
+  const SAMPLE_WINDOW = 80; // ms — only keep recent samples
+
+  function trackVelocity(x) {
+    const now = performance.now();
+    samples.push({ x, t: now });
+    // prune old
+    while (samples.length > 1 && now - samples[0].t > SAMPLE_WINDOW) samples.shift();
+  }
+  function getVelocity() {
+    if (samples.length < 2) return 0;
+    const first = samples[0], last = samples[samples.length - 1];
+    const dt = last.t - first.t;
+    return dt > 0 ? (last.x - first.x) / dt : 0; // px/ms
+  }
+
+  /* ── visual helpers ── */
+  // Shadow grows with drag distance — near = tight, far = diffuse
+  function applyShadow(el, absDx) {
+    const t = Math.min(absDx / 160, 1);               // 0→1 over 160px
+    const blur = 8 + t * 24;                           // 8→32
+    const spread = t * 4;                              // 0→4
+    const yOff = 4 + t * 12;                           // 4→16
+    const alpha = 0.18 + t * 0.22;                     // .18→.40
+    el.style.boxShadow = `0 ${yOff}px ${blur}px ${spread}px rgba(0,0,0,${alpha})`;
+  }
+
+  // Tilt: slight rotation toward the drag direction, max ±3°
+  function applyTilt(el, dxVal) {
+    const maxRot = 3;
+    const rot = Math.max(-maxRot, Math.min(maxRot, dxVal * 0.02));
+    el.style.transform = `translate(${dxVal}px, ${dy * 0.3}px) rotate(${rot}deg)`;
+  }
+
+  function clearInline(el) {
+    el.style.transform = '';
+    el.style.boxShadow = '';
+    el.style.transition = '';
+    el.style.opacity = '';
+    el.classList.remove('lifted');
+  }
+
+  /* ── pointer handlers ── */
   listEl.addEventListener('pointerdown', (e) => {
     if (e.button !== 0) return;
-    const row = e.target.closest('.row');
-    if (!row || e.target.closest('button, .stepper')) return;
-    startX = e.clientX;
-    startY = e.clientY;
-    lastX = startX;
-    lastTime = Date.now();
-    velocity = 0;
-    swipingRow = row;
-    isSwiping = false;
-    swipingRow.style.transition = 'none';
+    const r = e.target.closest('.row');
+    if (!r || e.target.closest('button, .stepper')) return;
+    row = r;
+    originX = e.clientX;
+    originY = e.clientY;
+    dx = 0; dy = 0;
+    lifted = false;
+    pointerId = e.pointerId;
+    samples.length = 0;
+    trackVelocity(e.clientX);
+    row.style.transition = 'none';
   });
 
   listEl.addEventListener('pointermove', (e) => {
-    if (!swipingRow || startX === null) return;
-    const dx = e.clientX - startX;
-    const dy = e.clientY - startY;
+    if (!row) return;
+    dx = e.clientX - originX;
+    dy = e.clientY - originY;
+    trackVelocity(e.clientX);
 
-    // Lock into horizontal swipe once intent is clear
-    if (!isSwiping && Math.abs(dx) > 10 && Math.abs(dx) > Math.abs(dy)) {
-      isSwiping = true;
-      swipingRow.classList.add('swiping');
-      try { swipingRow.setPointerCapture(e.pointerId); } catch(err) {}
-    }
-
-    if (isSwiping) {
-      // Track velocity for fling detection
-      const now = Date.now();
-      const dt = now - lastTime;
-      if (dt > 0) velocity = (e.clientX - lastX) / dt;
-      lastX = e.clientX;
-      lastTime = now;
-
-      // Allow both directions; slight scale up to look "lifted"
-      const progress = Math.min(Math.abs(dx) / THRESHOLD, 1);
-      const scale = 1 + progress * 0.02;
-      swipingRow.style.transform = `translateX(${dx}px) scale(${scale})`;
-      e.preventDefault();
-    }
-  });
-
-  const endSwipe = (e) => {
-    if (!swipingRow) return;
-    const dx = startX !== null ? e.clientX - startX : 0;
-    const row = swipingRow;
-    swipingRow = null;
-    startX = null;
-
-    if (isSwiping) {
-      const absVel = Math.abs(velocity);
-      const flung = absVel > FLING_VEL;
-      const pastThreshold = Math.abs(dx) > THRESHOLD;
-      const dismiss = flung || pastThreshold;
-      const direction = (flung ? Math.sign(velocity) : Math.sign(dx)) || -1;
-
-      row.style.transition = 'transform 0.25s ease, opacity 0.25s ease';
-      row.classList.remove('swiping');
-
-      if (dismiss) {
-        row.style.transform = `translateX(${direction * 110}%)`;
-        row.style.opacity = '0';
-        const item = findItem(row);
-        if (item) {
-          setTimeout(() => commit(Store.update(item, { onList: false, checked: false, listQty: 1 })), 250);
-        }
+    // Decide: is this a horizontal swipe?
+    if (!lifted) {
+      if (Math.abs(dx) > 8 && Math.abs(dx) > Math.abs(dy) * 1.4) {
+        lifted = true;
+        row.classList.add('lifted');
+        try { row.setPointerCapture(e.pointerId); } catch (_) {}
+      } else if (Math.abs(dy) > 12) {
+        // vertical scroll — abort
+        row = null;
+        return;
       } else {
-        // Snap back
-        row.style.transform = '';
-        row.style.opacity = '';
+        return; // still deciding
       }
     }
-  };
 
-  listEl.addEventListener('pointerup', endSwipe);
-  listEl.addEventListener('pointercancel', endSwipe);
+    applyTilt(row, dx);
+    applyShadow(row, Math.abs(dx));
+    e.preventDefault();
+  });
+
+  function release(e) {
+    if (!row) return;
+    const el = row;
+    row = null;
+
+    if (!lifted) { clearInline(el); return; }
+
+    const vel = getVelocity();           // px/ms
+    const absVel = Math.abs(vel);
+    const flung = absVel > 0.5;
+    const pastThreshold = Math.abs(dx) > 100;
+    const dismiss = flung || pastThreshold;
+    const dir = (flung ? Math.sign(vel) : Math.sign(dx)) || -1;
+
+    if (dismiss) {
+      // Fling off — continue with momentum
+      const flyDist = dir * (Math.abs(dx) + Math.max(absVel * 200, 180));
+      const flyTime = Math.min(0.35, Math.max(0.15, 180 / (absVel * 1000 + 1)));
+      el.style.transition = `transform ${flyTime}s ease-out, opacity ${flyTime}s ease-out`;
+      el.style.transform = `translate(${flyDist}px, ${dy * 0.3}px) rotate(${dir * 6}deg)`;
+      el.style.opacity = '0';
+      const item = findItem(el);
+      if (item) {
+        const ms = flyTime * 1000;
+        setTimeout(() => {
+          clearInline(el);
+          commit(Store.update(item, { onList: false, checked: false, listQty: 1 }));
+        }, ms);
+      }
+    } else {
+      // Spring back — overshoot slightly for physicality
+      el.style.transition = 'transform 0.35s cubic-bezier(.34,1.56,.64,1), box-shadow 0.35s ease, opacity 0.3s ease';
+      el.style.transform = '';
+      el.style.boxShadow = '';
+      el.style.opacity = '';
+      el.addEventListener('transitionend', function cleanup() {
+        el.removeEventListener('transitionend', cleanup);
+        clearInline(el);
+      });
+    }
+  }
+
+  listEl.addEventListener('pointerup', release);
+  listEl.addEventListener('pointercancel', release);
+
+  // Swallow the click that follows a swipe gesture
   listEl.addEventListener('click', (e) => {
-    if (isSwiping) {
+    if (lifted) {
       e.stopPropagation(); e.preventDefault();
-      isSwiping = false;
+      lifted = false;
     }
   }, true);
 })();

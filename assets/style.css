@@ -34,14 +34,11 @@ button { font-family: var(--sans); cursor: pointer; }
   border: 1px solid var(--hairline); border-radius: 12px; padding: 9px 13px; margin-bottom: 6px;
   font-family: var(--serif); font-size: 16px;
   user-select: none; -webkit-user-select: none; -webkit-touch-callout: none;
-  position: relative; /* for z-index during swipe */
+  position: relative;
 }
-/* Swiping: row lifts up, mutes, looks "grabbed" */
-.row.swiping {
-  opacity: .65; z-index: 2;
-  box-shadow: 0 6px 20px rgba(0,0,0,.35);
-  transform-origin: center center;
-}
+/* Lifted: the row has physically detached from the list.
+   Shadow, rotation, and position are all set inline by JS. */
+.row.lifted { z-index: 50; pointer-events: auto; }
 .check {
   width: 22px; height: 22px; border-radius: 50%; border: 1.5px solid var(--muted);
   background: none; flex: none; color: transparent; font-size: 13px; line-height: 1; padding: 0;
