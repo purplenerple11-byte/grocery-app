@@ -199,6 +199,7 @@ the implementer where an item collides with existing code.
        when `stock === 0` or `stock <= lowAt`; `false` when stock is sufficient.
      - A final **"Add to List"** button sets `onList: true` for only the checked
        UUIDs, then dismisses the modal.
+     - Selection checks are custom-styled to match the round orange/clay checks of the shopping list.
    - ⚠ note: this **supersedes the V3 decision** that a meal adds *every* item and
      the user prunes on the list (see the V3 section above). Treat this as an
      intentional reversal, not a contradiction — the "have N" dimming on the list
