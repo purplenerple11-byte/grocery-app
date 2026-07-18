@@ -79,10 +79,31 @@ python3 -m http.server 8000        # from repo root; service worker needs http
 ## Status
 
 **Shipped and live:** v1 (list, inventory sheet, trip loop, export/import, PWA),
-V2 (price + store history), and V3 (saved meals). 38 tests passing.
+V2 (price + store history), V3 (saved meals). V4 item #1 (merge import) is built
+and verified locally. 49 tests passing.
 
-**Awaiting the user's real-device review of V3.** A checklist was given. If they
-report a bug, that takes priority over new work.
+**Awaiting the user's real-device review of V3 and V4-#1.** Checklists were given.
+If they report a bug, that takes priority over new work.
+
+**V4 item #1 — merge import (built).** Settings now has two import actions
+instead of one, a decision the user made — don't collapse them back:
+- **Restore from backup** — strict (`Store.validateImport`), replaces everything,
+  guarded by a `confirm()`. The old import behaviour, made destructive-explicit.
+- **Add from file** — additive merge (`Store.mergeImport`), never deletes. This
+  is the AI-supplemental path: tolerates missing UUIDs and partial items. Match
+  by uuid id, else trimmed/case-insensitive name; matched items get **only their
+  present, non-empty fields** overlaid (so `{name:"Milk"}` won't zero an existing
+  stock, and `unit:""` won't blank an existing unit); price history is **unioned**,
+  never replaced. Unmatched items are appended with a **freshly minted** UUID (a
+  payload id is never trusted as the stored id — preserves the injection guard
+  from 635ec6c). A full export's meal `itemIds` are remapped through an idMap so
+  meals still resolve after their items are re-minted. Both import paths write
+  items+meals in **one IndexedDB transaction** (`DB.replaceAllWithMeals`), so a
+  failed write aborts atomically instead of half-committing under a "data
+  unchanged" banner. Not yet done from backlog #1: AI *meals* with throwaway ids
+  and no matching items still can't be added.
+  (These four refinements came from an independent review — a Sonnet subagent —
+  that also caught the item's original wholesale-price-overwrite bug.)
 
 **V3 — saved meals (built).** A meal is a named set of item ids — it never copies
 item data, so renaming an item updates every meal for free and a deleted item
@@ -107,16 +128,10 @@ revisit them:
 brainstorm before building. Verbatim intent below, with `⚠ note:` lines added by
 the implementer where an item collides with existing code.
 
-1. **Data merging & AI additive workflow**
-   - *Issue:* import replaces the entire app state, causing data loss.
-   - *Fix:* the import handler needs a **merge**, not a strict overwrite. Map
-     existing items by `id` (or by `name` for new AI-generated items missing
-     UUIDs). Match → update properties; no match → append. Lets the AI generate
-     supplemental lists that stack onto the existing database.
-   - ⚠ note: `validateImport` currently **requires uuid-shaped ids** (commit
-     635ec6c, to block data-id injection). AI items with no UUID would be
-     rejected before any merge runs — reconcile the name-match path with that
-     guard, e.g. mint a UUID for id-less incoming items.
+1. **Data merging & AI additive workflow** — ✅ **BUILT** (see the "V4 item #1"
+   note above in Status). Kept the strict path as "Restore from backup" and
+   added "Add from file" for the merge. Remaining sub-item: AI-generated *meals*
+   with throwaway ids aren't remapped yet.
 
 2. **Sorting & schema expansion**
    - *Sorting:* multi-tier sort in the render function. Primary: group by

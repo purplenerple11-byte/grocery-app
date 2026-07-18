@@ -437,26 +437,52 @@ document.getElementById('export-btn').addEventListener('click', () => {
   setTimeout(() => URL.revokeObjectURL(a.href), 0);
 });
 
-document.getElementById('import-file').addEventListener('change', async (e) => {
+/* Restore: strict, replaces everything. Destructive, so it confirms first. */
+document.getElementById('restore-file').addEventListener('change', async (e) => {
   const file = e.target.files[0];
   e.target.value = '';
   if (!file) return;
   let data;
-  try { data = JSON.parse(await file.text()); } catch { showBanner('Import failed: not valid JSON.'); return; }
-  if (!Store.validateImport(data)) { showBanner('Import failed: unrecognized file format.'); return; }
+  try { data = JSON.parse(await file.text()); } catch { showBanner('Restore failed: not valid JSON.'); return; }
+  if (!Store.validateImport(data)) { showBanner('Restore failed: unrecognized file format.'); return; }
+  if (!confirm('Restore replaces everything currently in the app with this backup. Continue?')) return;
   const items = Store.normalizeImport(data.items); // v1 backups predate price history
   const meals = Store.normalizeImportMeals(data.meals, items); // v1 backups predate meals
   try {
-    await DB.replaceAll(items);
-    await DB.putSetting('meals', meals);
+    await DB.replaceAllWithMeals(items, meals); // atomic: both stores or neither
   } catch (err) {
-    showBanner('Import failed — data unchanged.');
+    showBanner('Restore failed — data unchanged.');
     return;
   }
   state.items = items;
   state.meals = meals;
   render();
   document.getElementById('settings-dialog').close();
+});
+
+/* Add: lenient merge, never deletes. This is the AI-additive path — matched
+   items update, new items append. See Store.mergeImport. */
+document.getElementById('merge-file').addEventListener('change', async (e) => {
+  const file = e.target.files[0];
+  e.target.value = '';
+  if (!file) return;
+  let data;
+  try { data = JSON.parse(await file.text()); } catch { showBanner('Add failed: not valid JSON.'); return; }
+  if (!Store.validateMergeImport(data)) { showBanner('Add failed: expected an object with an items list.'); return; }
+  const { items, meals, stats } = Store.mergeImport(state.items, state.meals, data);
+  try {
+    await DB.replaceAllWithMeals(items, meals); // atomic: both stores or neither
+  } catch (err) {
+    showBanner('Add failed — data unchanged.');
+    return;
+  }
+  state.items = items;
+  state.meals = meals;
+  render();
+  document.getElementById('settings-dialog').close();
+  const parts = [`Added ${stats.added}`, `updated ${stats.updated}`];
+  if (stats.skipped) parts.push(`skipped ${stats.skipped}`);
+  showBanner(parts.join(', ') + '.');
 });
 
 async function boot() {
