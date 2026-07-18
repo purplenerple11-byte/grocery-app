@@ -155,61 +155,73 @@ async function saveMeals() {
   }
 }
 
-const addInput = document.getElementById('add-input');
-const autocompleteList = document.getElementById('autocomplete-list');
+/* ── Intelligent auto-complete for the add-item input ── */
+(() => {
+  const addInput = document.getElementById('add-input');
+  if (!addInput) return; // defensive
 
-addInput.addEventListener('input', () => {
-  const val = addInput.value.trim().toLowerCase();
-  if (!val) {
-    autocompleteList.hidden = true;
-    return;
+  // Grab or create the dropdown list element
+  let listEl = document.getElementById('autocomplete-list');
+  if (!listEl) {
+    listEl = document.createElement('div');
+    listEl.id = 'autocomplete-list';
+    listEl.className = 'autocomplete-items';
+    listEl.hidden = true;
+    // Insert right after the input
+    addInput.insertAdjacentElement('afterend', listEl);
+    // Ensure parent acts as positioning anchor
+    if (addInput.parentElement) addInput.parentElement.style.position = 'relative';
   }
-  const matches = state.items.filter(it => it.name.toLowerCase().includes(val));
-  if (!matches.length) {
-    autocompleteList.hidden = true;
-    return;
-  }
-  autocompleteList.innerHTML = matches.map(it => `
-    <div class="autocomplete-item" data-id="${it.id}">
-      <span class="autocomplete-name">${escapeHtml(it.name)}</span>
-      ${it.tracked ? `<span class="autocomplete-stock">Stock: ${it.stock}</span>` : ''}
-    </div>
-  `).join('');
-  autocompleteList.hidden = false;
-});
 
-// Close dropdown if clicking outside
-document.addEventListener('click', (e) => {
-  if (e.target !== addInput) autocompleteList.hidden = true;
-});
+  function hideList() { listEl.hidden = true; }
 
-autocompleteList.addEventListener('click', (e) => {
-  const el = e.target.closest('.autocomplete-item');
-  if (!el) return;
-  const item = state.items.find(it => it.id === el.dataset.id);
-  if (item) {
-    commit(Store.update(item, { onList: true, checked: false }));
+  addInput.addEventListener('input', () => {
+    const val = addInput.value.trim().toLowerCase();
+    if (!val) { hideList(); return; }
+    const matches = state.items.filter(it => it.name.toLowerCase().includes(val));
+    if (!matches.length) { hideList(); return; }
+    listEl.innerHTML = matches.map(it => `
+      <div class="autocomplete-item" data-id="${it.id}">
+        <span class="autocomplete-name">${escapeHtml(it.name)}</span>
+        ${it.tracked ? `<span class="autocomplete-stock">Stock: ${it.stock}</span>` : ''}
+      </div>
+    `).join('');
+    listEl.hidden = false;
+  });
+
+  // Close dropdown when tapping anywhere else
+  document.addEventListener('pointerdown', (e) => {
+    if (e.target !== addInput && !listEl.contains(e.target)) hideList();
+  });
+
+  listEl.addEventListener('click', (e) => {
+    const el = e.target.closest('.autocomplete-item');
+    if (!el) return;
+    const item = state.items.find(it => it.id === el.dataset.id);
+    if (item) {
+      commit(Store.update(item, { onList: true, checked: false }));
+      addInput.value = '';
+      hideList();
+    }
+  });
+
+  document.getElementById('add-form').addEventListener('submit', (e) => {
+    e.preventDefault();
+    const name = addInput.value.trim();
+    if (!name) return;
+
+    // Exact-match → re-add existing item; else create new
+    const existing = state.items.find(it => it.name.toLowerCase() === name.toLowerCase());
+    if (existing) {
+      commit(Store.update(existing, { onList: true, checked: false }));
+    } else {
+      commit(Store.createItem(name, { onList: true }));
+    }
+
     addInput.value = '';
-    autocompleteList.hidden = true;
-  }
-});
-
-document.getElementById('add-form').addEventListener('submit', (e) => {
-  e.preventDefault();
-  const name = addInput.value.trim();
-  if (!name) return;
-  
-  // Creation Routing: exact match check
-  const existing = state.items.find(it => it.name.toLowerCase() === name.toLowerCase());
-  if (existing) {
-    commit(Store.update(existing, { onList: true, checked: false }));
-  } else {
-    commit(Store.createItem(name, { onList: true }));
-  }
-  
-  addInput.value = '';
-  autocompleteList.hidden = true;
-});
+    hideList();
+  });
+})();
 
 document.getElementById('banner-dismiss').addEventListener('click', () => {
   document.getElementById('banner').hidden = true;
