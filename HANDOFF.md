@@ -103,6 +103,62 @@ revisit them:
   over live data. Export is now `version: 2` and carries meals; v1 backups still
   import.
 
+**Next up — V4 feature backlog (user-authored 2026-07-17).** Not yet designed;
+brainstorm before building. Verbatim intent below, with `⚠ note:` lines added by
+the implementer where an item collides with existing code.
+
+1. **Data merging & AI additive workflow**
+   - *Issue:* import replaces the entire app state, causing data loss.
+   - *Fix:* the import handler needs a **merge**, not a strict overwrite. Map
+     existing items by `id` (or by `name` for new AI-generated items missing
+     UUIDs). Match → update properties; no match → append. Lets the AI generate
+     supplemental lists that stack onto the existing database.
+   - ⚠ note: `validateImport` currently **requires uuid-shaped ids** (commit
+     635ec6c, to block data-id injection). AI items with no UUID would be
+     rejected before any merge runs — reconcile the name-match path with that
+     guard, e.g. mint a UUID for id-less incoming items.
+
+2. **Sorting & schema expansion**
+   - *Sorting:* multi-tier sort in the render function. Primary: group by
+     category. Secondary: `stock > 0` to the top of the category block, `stock
+     === 0` to the bottom.
+   - ⚠ note: this also addresses the existing "list order reshuffles across
+     reloads" backlog item — same render path, do them together. The list view
+     shows only `onList` items, so decide whether the stock sort applies there,
+     to the inventory sheet, or both.
+   - *New categories:* append `Condiments`, `Spices`, `Drinks` to `CATEGORY_ORDER`
+     (`app.js:4`) and the `<select>` in `index.html`. Keeping them in
+     `CATEGORY_ORDER` is also what stops the existing "unknown category resets to
+     Other" bug for these three.
+
+3. **UI & interaction tweaks**
+   - *Slide-out button:* enlarge `#meals-tab` (height/width + padding) for an
+     easier touch target.
+   - *Swipe-to-remove:* horizontal-swipe listener on the active shopping-list
+     view; past threshold, set `onList: false` for that item's UUID — removes it
+     from the active list without going through the inventory sheet.
+   - ⚠ note: swipe can't be simulated reliably in automation (gotcha #3) and the
+     app has no swipe code yet; this is code-review + real-device territory. This
+     is also the "no remove-from-list in the details dialog" backlog item by
+     another route.
+
+4. **Meal selection pre-flight modal**
+   - *Issue:* appending all meal components creates redundant purchases and forces
+     manual cleanup of ingredients you already have.
+   - *Fix:* intercept the meal-selection click with an intermediate modal / bottom
+     sheet **before** modifying the main array.
+     - Iterate the meal's `itemIds`, fetch the objects, render sorted by stock
+       with `stock === 0` forced to the top.
+     - Show the current stock integer next to each item name.
+     - Stage a temporary `staged` boolean per row: initialise `true` (checked)
+       when `stock === 0` or `stock <= lowAt`; `false` when stock is sufficient.
+     - A final **"Add to List"** button sets `onList: true` for only the checked
+       UUIDs, then dismisses the modal.
+   - ⚠ note: this **supersedes the V3 decision** that a meal adds *every* item and
+     the user prunes on the list (see the V3 section above). Treat this as an
+     intentional reversal, not a contradiction — the "have N" dimming on the list
+     may become redundant once pruning moves into this modal.
+
 **Backlog** (non-blocking, from the v1 final review):
 - Editing an item whose category isn't in `CATEGORY_ORDER` silently resets it to
   "Other" — but the spec calls categories user-extendable.
