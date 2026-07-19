@@ -764,6 +764,19 @@ document.getElementById('preflight-form').addEventListener('submit', async (e) =
   flights.sort((a, b) => a.dest.top - b.dest.top);
 
   // 4. Create clones and animate with stagger
+  const FLY_MS = 640;
+  const STAGGER_MS = 60;
+  const SETTLE_AT = 0.85;  // motion is done by here; the rest is the hand-off fade
+
+  const revealRow = (row) => {
+    row.style.transition = 'opacity .12s ease';
+    row.classList.remove('fly-pending');
+    row.addEventListener('transitionend', () => { row.style.transition = ''; }, { once: true });
+  };
+
+  const reduced = matchMedia('(prefers-reduced-motion: reduce)').matches;
+  if (reduced) { flights.forEach(f => f.destRow.classList.remove('fly-pending')); return; }
+
   flights.forEach((f, i) => {
     const clone = document.createElement('div');
     clone.className = 'fly-clone';
@@ -776,21 +789,33 @@ document.getElementById('preflight-form').addEventListener('submit', async (e) =
 
     const dx = f.dest.left - f.src.left;
     const dy = f.dest.top - f.src.top;
-    const sx = f.dest.width / f.src.width;
-    const sy = f.dest.height / f.src.height;
+    // Uniform scale, damped toward 1 — a non-uniform scale distorts the label mid-flight.
+    const s = 1 + (f.dest.width / f.src.width - 1) * 0.5;
+
+    // Overshoot a fixed few pixels along the direction of travel rather than a
+    // proportion of it, so a long flight does not fling much further than a short one.
+    const dist = Math.hypot(dx, dy) || 1;
+    const over = Math.min(10, dist * 0.05);
+    const ox = (dx / dist) * over;
+    const oy = (dy / dist) * over;
 
     setTimeout(() => {
-      clone.style.transform = `translate(${dx}px, ${dy}px) scale(${sx}, ${sy})`;
-      clone.style.opacity = '0.6';
-      clone.addEventListener('transitionend', () => {
-        clone.remove();
-        f.destRow.style.transition = 'opacity .15s ease';
-        f.destRow.classList.remove('fly-pending');
-        f.destRow.addEventListener('transitionend', () => {
-          f.destRow.style.transition = '';
-        }, { once: true });
-      }, { once: true });
-    }, i * 50);
+      const anim = clone.animate([
+        // slow start, accelerates, decelerates as it runs slightly past the slot
+        { offset: 0,    transform: `translate(0px, 0px) scale(1)`,                              opacity: 1, easing: 'cubic-bezier(.5,0,.25,1)' },
+        { offset: 0.62, transform: `translate(${dx + ox}px, ${dy + oy}px) scale(${s * 1.015})`, opacity: 1, easing: 'ease-in-out' },
+        // caught, swings back a touch past centre
+        { offset: 0.76, transform: `translate(${dx - ox * 0.3}px, ${dy - oy * 0.3}px) scale(${s * 0.997})`, opacity: 1, easing: 'ease-out' },
+        // settled in the slot, then hands off
+        { offset: SETTLE_AT, transform: `translate(${dx}px, ${dy}px) scale(${s})`, opacity: 1, easing: 'linear' },
+        { offset: 1,         transform: `translate(${dx}px, ${dy}px) scale(${s})`, opacity: 0 },
+      ], { duration: FLY_MS, fill: 'forwards' });
+
+      // Reveal underneath only once the clone has stopped moving, so the elastic
+      // settle reads on the clone and the swap happens with both at rest.
+      setTimeout(() => revealRow(f.destRow), FLY_MS * SETTLE_AT);
+      anim.finished.then(() => clone.remove(), () => clone.remove());
+    }, i * STAGGER_MS);
   });
 });
 
