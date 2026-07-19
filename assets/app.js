@@ -720,22 +720,78 @@ document.getElementById('preflight-items').addEventListener('change', (e) => {
 
 document.getElementById('preflight-form').addEventListener('submit', async (e) => {
   e.preventDefault();
-  
+
   const form = e.target;
   const checkboxes = form.querySelectorAll('input[name="itemIds"]:checked');
   const selectedIds = Array.from(checkboxes).map(cb => cb.value);
-  
-  if (selectedIds.length > 0) {
-    state.items = state.items.map(it => 
-      selectedIds.includes(it.id) ? Store.update(it, { onList: true, checked: false }) : it
-    );
-    render();
-    DB.replaceAll(state.items).catch(() => showBanner('Save failed — changes may not persist.'));
-    showBanner(`Added ${selectedIds.length} item(s) from ${document.getElementById('preflight-dialog-title').textContent}.`);
+
+  if (selectedIds.length === 0) {
+    document.getElementById('preflight-dialog').close();
+    setDrawer(false);
+    return;
   }
-  
+
+  // 1. Snapshot source rects from preflight rows
+  const sourceRects = {};
+  selectedIds.forEach(id => {
+    const input = form.querySelector(`input[value="${id}"]`);
+    if (input) {
+      const row = input.closest('.preflight-row');
+      sourceRects[id] = row.getBoundingClientRect();
+    }
+  });
+
+  // 2. Close dialog, update state, render
   document.getElementById('preflight-dialog').close();
-  setDrawer(false); // Close meals drawer
+  setDrawer(false);
+  state.items = state.items.map(it =>
+    selectedIds.includes(it.id) ? Store.update(it, { onList: true, checked: false }) : it
+  );
+  render();
+  DB.replaceAll(state.items).catch(() => showBanner('Save failed — changes may not persist.'));
+  showBanner(`Added ${selectedIds.length} item(s) from ${document.getElementById('preflight-dialog-title').textContent}.`);
+
+  // 3. Mark destination rows as pending, snapshot destination rects
+  const listEl = document.getElementById('list');
+  const flights = [];
+  selectedIds.forEach(id => {
+    const destRow = listEl.querySelector(`.row[data-id="${id}"]`);
+    if (destRow && sourceRects[id]) {
+      destRow.classList.add('fly-pending');
+      flights.push({ id, src: sourceRects[id], dest: destRow.getBoundingClientRect(), destRow });
+    }
+  });
+  flights.sort((a, b) => a.dest.top - b.dest.top);
+
+  // 4. Create clones and animate with stagger
+  flights.forEach((f, i) => {
+    const clone = document.createElement('div');
+    clone.className = 'fly-clone';
+    clone.textContent = state.items.find(it => it.id === f.id)?.name || '';
+    clone.style.left = f.src.left + 'px';
+    clone.style.top = f.src.top + 'px';
+    clone.style.width = f.src.width + 'px';
+    clone.style.height = f.src.height + 'px';
+    document.body.appendChild(clone);
+
+    const dx = f.dest.left - f.src.left;
+    const dy = f.dest.top - f.src.top;
+    const sx = f.dest.width / f.src.width;
+    const sy = f.dest.height / f.src.height;
+
+    setTimeout(() => {
+      clone.style.transform = `translate(${dx}px, ${dy}px) scale(${sx}, ${sy})`;
+      clone.style.opacity = '0.6';
+      clone.addEventListener('transitionend', () => {
+        clone.remove();
+        f.destRow.style.transition = 'opacity .15s ease';
+        f.destRow.classList.remove('fly-pending');
+        f.destRow.addEventListener('transitionend', () => {
+          f.destRow.style.transition = '';
+        }, { once: true });
+      }, { once: true });
+    }, i * 50);
+  });
 });
 
 let dialogMealId = null; // null = saving the current list as a new meal
