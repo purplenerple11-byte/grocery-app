@@ -103,6 +103,44 @@ test('serialize/validateImport round-trip', () => {
   assertEqual(Store.validateImport(data), true);
 });
 
+test('serializePantry keeps only tracked, in-stock items', () => {
+  const items = [
+    Store.createItem('Eggs', { tracked: true, stock: 6, category: 'Dairy', unit: 'cartons' }),
+    Store.createItem('Rice', { tracked: true, stock: 2, category: 'Pantry' }),
+    Store.createItem('Milk', { tracked: true, stock: 0, category: 'Dairy' }), // out of stock → excluded
+    Store.createItem('Napkins', { tracked: false, stock: 9, category: 'Household' }), // untracked → excluded
+  ];
+  const data = JSON.parse(Store.serializePantry(items));
+  assertEqual(data.pantry.map((p) => p.name), ['Eggs', 'Rice']);
+  assert(/^\d{4}-\d{2}-\d{2}$/.test(data.exportedAt), 'has ISO date');
+});
+
+test('serializePantry emits a clean, minimal shape', () => {
+  const items = [
+    Store.createItem('Eggs', { tracked: true, stock: 6, category: 'Dairy', unit: 'cartons' }),
+    Store.createItem('Rice', { tracked: true, stock: 2, category: 'Pantry' }),
+  ];
+  const data = JSON.parse(Store.serializePantry(items));
+  assertEqual(data.pantry[0], { name: 'Eggs', category: 'Dairy', stock: 6, unit: 'cartons' });
+  assertEqual(data.pantry[1], { name: 'Rice', category: 'Pantry', stock: 2 }); // unit omitted when empty
+});
+
+test('serializePantry groups in category order', () => {
+  const items = [
+    Store.createItem('Rice', { tracked: true, stock: 1, category: 'Pantry' }),
+    Store.createItem('Apples', { tracked: true, stock: 3, category: 'Produce' }),
+    Store.createItem('Eggs', { tracked: true, stock: 6, category: 'Dairy' }),
+  ];
+  const data = JSON.parse(Store.serializePantry(items));
+  // Produce before Dairy before Pantry, per CATEGORY_ORDER
+  assertEqual(data.pantry.map((p) => p.name), ['Apples', 'Eggs', 'Rice']);
+});
+
+test('serializePantry on empty stock yields an empty list', () => {
+  const data = JSON.parse(Store.serializePantry([]));
+  assertEqual(data.pantry, []);
+});
+
 test('validateImport rejects bad shapes', () => {
   assertEqual(Store.validateImport(null), false);
   assertEqual(Store.validateImport({ version: 9, items: [] }), false); // still-unknown version

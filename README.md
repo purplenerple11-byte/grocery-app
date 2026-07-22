@@ -27,4 +27,5 @@ Open `tests/run-tests.html` in a browser. Page title shows ✓/✗.
 - [ ] Peek bar shows correct out/low pills when collapsed
 - [ ] Long-press row/tile opens details; edit + delete work
 - [ ] ⚙ Export then Import round-trips with no data change
+- [ ] ⚙ Export pantry downloads only tracked, in-stock items (out-of-stock/untracked excluded)
 - [ ] Malformed import shows banner, data untouched
