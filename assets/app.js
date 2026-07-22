@@ -878,13 +878,28 @@ document.getElementById('settings-close').addEventListener('click', () => {
   document.getElementById('settings-dialog').close();
 });
 
-document.getElementById('export-btn').addEventListener('click', () => {
-  const blob = new Blob([Store.serialize(state.items, state.meals)], { type: 'application/json' });
+function downloadJson(text, filename) {
+  const blob = new Blob([text], { type: 'application/json' });
   const a = document.createElement('a');
   a.href = URL.createObjectURL(blob);
-  a.download = `grocery-backup-${new Date().toISOString().slice(0, 10)}.json`;
+  a.download = filename;
   a.click();
   setTimeout(() => URL.revokeObjectURL(a.href), 0);
+}
+
+const today = () => new Date().toISOString().slice(0, 10);
+
+document.getElementById('export-btn').addEventListener('click', () => {
+  downloadJson(Store.serialize(state.items, state.meals), `grocery-backup-${today()}.json`);
+});
+
+/* Pantry export: only what's in stock, in an AI-friendly shape (see
+   Store.serializePantry). Meant to be pasted/uploaded to an assistant for a
+   "what can I cook?" suggestion, not to be re-imported. */
+document.getElementById('export-pantry-btn').addEventListener('click', () => {
+  const inStock = state.items.some((it) => it.tracked && it.stock > 0);
+  if (!inStock) { showBanner('Nothing in stock to export yet.'); return; }
+  downloadJson(Store.serializePantry(state.items), `pantry-${today()}.json`);
 });
 
 /* Restore: strict, replaces everything. Destructive, so it confirms first. */

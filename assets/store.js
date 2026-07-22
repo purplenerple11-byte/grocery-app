@@ -201,6 +201,24 @@ const Store = {
     return JSON.stringify({ version: 2, items, meals }, null, 2);
   },
 
+  /* Pantry export (V5): just the tracked items you currently have in stock,
+     in a compact shape meant to be handed to an AI ("here's what's in my
+     kitchen, suggest a meal"). Deliberately NOT the backup format — no ids,
+     prices, list state or timestamps, none of which help a recommendation.
+     Grouped in the same category order the inventory shows so it reads
+     top-to-bottom like a shelf. Empty stock is a valid, empty export. */
+  serializePantry(items) {
+    const inStock = items.filter((it) => it.tracked && it.stock > 0);
+    const pantry = Store.groupByCategory(inStock).flatMap(([, group]) =>
+      group.map((it) => {
+        const entry = { name: it.name, category: it.category, stock: it.stock };
+        if (it.unit) entry.unit = it.unit;
+        return entry;
+      })
+    );
+    return JSON.stringify({ exportedAt: new Date().toISOString().slice(0, 10), pantry }, null, 2);
+  },
+
   /* v1 backups predate meals and are still accepted (meals default to none). */
   validateImport(data) {
     if (!data || typeof data !== 'object' || !Array.isArray(data.items)) return false;
