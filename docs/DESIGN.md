@@ -13,6 +13,8 @@ colors:
   ok: "#7d9b76"
   low: "#d9a557"
   out: "#c6613f"
+  scrim: "rgba(0, 0, 0, .45)"
+  backdrop: "rgba(0, 0, 0, .55)"
 typography:
   display:
     fontFamily: "Georgia, 'Source Serif Pro', Charter, serif"
@@ -30,6 +32,18 @@ typography:
     fontFamily: "Inter, system-ui, -apple-system, Arial, sans-serif"
     fontSize: "15px"
     fontWeight: 400
+  control:
+    fontFamily: "Inter, system-ui, -apple-system, Arial, sans-serif"
+    fontSize: "14px"
+    fontWeight: 400
+  body-sm:
+    fontFamily: "Inter, system-ui, -apple-system, Arial, sans-serif"
+    fontSize: "13px"
+    fontWeight: 400
+  glyph:
+    fontFamily: "Inter, system-ui, -apple-system, Arial, sans-serif"
+    fontSize: "10px"
+    fontWeight: 700
   caption:
     fontFamily: "Inter, system-ui, -apple-system, Arial, sans-serif"
     fontSize: "12px"
@@ -47,6 +61,7 @@ rounded:
   sheet: "20px"
   pill: "999px"
   circle: "50%"
+  grip: "2px"
 spacing:
   tight: "4px"
   snug: "6px"
@@ -193,6 +208,10 @@ second family to compete with them.
   helper copy, and the resting stroke of an unchecked circle.
 - **Graphite Line** (`#3d3d3a`): every hairline border and divider, the sheet
   grabber, and the drawer tab's grip.
+- **Scrim** (`rgba(0, 0, 0, .45)`) and **Backdrop** (`rgba(0, 0, 0, .55)`): the
+  two transparent blacks, behind the meals drawer and behind a `<dialog>`
+  respectively. They are the only place pure black appears, and they darken
+  what is behind them rather than colouring anything themselves.
 
 ### Named Rules
 
@@ -241,12 +260,17 @@ stacks, which is what keeps the app instant offline.
   list and the inventory grid, and the price-history heading. The only uppercase
   in the system.
 
-**Size steps actually in use.** The roles above are the system; the
-implementation reaches for more steps than that between them —
-24 / 20 / 16 / 15 / 14 / 13 / 12.5 / 12 / 11 / 10.5 px. The small end is
-crowded: 12, 12.5, and 13 do near-identical work and are a consolidation
-worth making. Documented here so the gap reads as a known rough edge rather
-than as licence to invent an eleventh step.
+- **Control** (sans, 400, 14px): the settings gear, stepper glyphs, dialog
+  inputs, and every dialog menu button. The size a finger operates.
+- **Body-sm** (sans, 400, 13px): the check and pre-flight glyphs, quantities,
+  the peek bar, the error banner, price-history rows, and drawer copy.
+- **Glyph** (sans, 700, 10px): the two iconographic marks — the category
+  chevron and the ribbon's ✓. Not for words.
+
+**On the crowded small end.** Ten steps is a lot for an app this size, and
+12 / 12.5 / 13px do near-identical work. Consolidating them is a real
+cleanup, but it is a refactor rather than a polish edit; until then these
+are the steps, and there is no eleventh.
 
 ### Named Rules
 
