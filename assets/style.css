@@ -5,8 +5,16 @@
   --ok: #7d9b76; --low: #d9a557; --out: #c6613f;
   --serif: Georgia, "Source Serif Pro", Charter, serif;
   --sans: Inter, system-ui, -apple-system, Arial, sans-serif;
+  /* Native controls (checkboxes) default to system blue — the one cool colour
+     in an all-warm palette. One line keeps them inside the accent family. */
+  accent-color: var(--clay);
 }
 * { box-sizing: border-box; margin: 0; padding: 0; }
+
+/* The UA default ring renders amber on this dark warm canvas, which reads as
+   the ochre "low stock" signal. Ink is neutral and unambiguous. */
+:focus-visible { outline: 2px solid var(--ink); outline-offset: 2px; }
+::selection { background: var(--clay); color: var(--canvas); }
 html, body { height: 100%; }
 body {
   font-family: var(--sans); background: var(--canvas); color: var(--ink);
@@ -62,15 +70,18 @@ button { font-family: var(--sans); cursor: pointer; }
 .row.done .name { text-decoration: line-through; color: var(--muted); }
 .row .name { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .unit { font-family: var(--sans); font-size: 12px; color: var(--muted); flex: none; }
-.track-btn { font-size: 10px; color: var(--muted); background: none; border: 1px solid var(--hairline); border-radius: 999px; padding: 2px 8px; flex: none; }
+.track-btn { font-size: 11px; color: var(--muted); background: none; border: 1px solid var(--hairline); border-radius: 999px; padding: 2px 8px; flex: none; }
 .stepper { flex: none; display: flex; align-items: center; gap: 6px; }
 .step-btn { width: 26px; height: 26px; border-radius: 50%; border: 1px solid var(--hairline); background: none; color: var(--ink); font-size: 14px; padding: 0; }
 .qty { font-size: 13px; min-width: 16px; text-align: center; }
 
+/* Detached from the layout, so per the system's own rule it casts a shadow —
+   without one it read as slicing through whatever row it floated over. */
 #complete-trip {
   position: fixed; left: 50%; transform: translateX(-50%); bottom: 78px; z-index: 5;
   background: var(--clay); color: var(--canvas); border: none; font-weight: 600; font-size: 15px;
   padding: 12px 28px; border-radius: 0 0 8px 8px;
+  box-shadow: 0 4px 14px rgba(0, 0, 0, .35);
 }
 #complete-trip:active { background: var(--clay-deep); }
 
@@ -114,13 +125,18 @@ button { font-family: var(--sans); cursor: pointer; }
   font-family: var(--serif); font-size: 12.5px; line-height: 1.2;
   display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden;
 }
+/* Only on-list tiles carry the ribbon, so only they give up room to it. 6px is
+   the ceiling: at 8px a two-line name like "Sourdough loaf" starts losing its
+   first word. Names stay top-aligned and the clamp keeps its ellipsis — the
+   ribbon still slightly covers the first line, which is the accepted look. */
+.tile.on-list .name { padding-right: 6px; }
 .tile .bottom { margin-top: auto; display: flex; align-items: center; gap: 4px; }
 .meta { display: inline-flex; align-items: center; gap: 4px; }
 .count { font-weight: 600; font-size: 11px; color: var(--ink); background: none; border: none; padding: 0 2px; }
 .stock-step { display: none; width: 20px; height: 20px; font-size: 12px; }
 .tile.editing .stock-step { display: inline-flex; align-items: center; justify-content: center; }
 /* Last price sits below the count in the hierarchy: muted, lighter weight. */
-.tile .price { font-size: 9.5px; color: var(--muted); font-weight: 400; margin-left: auto; }
+.tile .price { font-size: 10.5px; color: var(--muted); font-weight: 400; margin-left: auto; }
 .tile.editing .price { display: none; }
 .ribbon {
   position: absolute; top: 0; right: 0; width: 28px; height: 28px;
@@ -135,34 +151,58 @@ button { font-family: var(--sans); cursor: pointer; }
 .row.pressing, .tile.pressing { border-color: var(--clay); }
 
 /* A list row for something you already have plenty of. Dimmed rather than
-   struck through — strikethrough already means "in my basket" (.row.done). */
-.row.have { opacity: .5; }
+   struck through — strikethrough already means "in my basket" (.row.done).
+   De-emphasised per element rather than with a blanket opacity: a .5 alpha on
+   the whole row dropped "have N" to 2.8:1, and that note is the thing that
+   explains why the row is dimmed at all. */
+.row.have .name { color: var(--muted); }
+.row.have .check { opacity: .5; }
 .row .have-note { font-family: var(--sans); font-size: 11px; color: var(--muted); }
 
 /* ---- Meals drawer (V3) ----
    Anchored to the centred 480px column, not the viewport, so the tab hugs the
    list's left edge on desktop the way it does on a phone. */
+/* The hit area stays 28×84 — V4 enlarged it from 17px precisely so a thumb
+   could find it. Only the *painted* tab is 16px: below 480px the column is
+   flush to the viewport edge, so a 28px painted tab sat on top of the list and
+   clipped the category labels ("MEAT" rendered as "EAT"). 16px stops exactly
+   at the list's 16px gutter. */
 #meals-tab {
   position: fixed; top: 50%; left: max(0px, calc(50% - 240px)); transform: translateY(-50%);
   z-index: 6; width: 28px; height: 84px;
-  background: var(--surface-2); border: 1px solid var(--hairline); border-left: none;
-  border-radius: 0 12px 12px 0; padding: 0;
-  display: flex; align-items: center; justify-content: center;
+  background: none; border: none; padding: 0;
+  display: flex; align-items: center; justify-content: flex-start;
 }
-#meals-tab .tab-grip { width: 4px; height: 32px; background: var(--hairline); border-radius: 2px; }
+#meals-tab::before {
+  content: ''; position: absolute; top: 0; bottom: 0; left: 0; width: 16px;
+  background: var(--surface-2); border: 1px solid var(--hairline); border-left: none;
+  border-radius: 0 12px 12px 0;
+}
+#meals-tab .tab-grip {
+  position: relative; margin-left: 6px;
+  width: 4px; height: 32px; background: var(--hairline); border-radius: 2px;
+}
 #meals-tab[aria-expanded="true"] { opacity: 0; pointer-events: none; }
 
 #meals-scrim { position: fixed; inset: 0; z-index: 14; background: rgba(0, 0, 0, .45); }
 #meals-scrim[hidden] { display: none; }
 
+/* translateX(-100%) only clears the screen when the column is flush to the
+   viewport edge. Wider than 480px there's a gutter, and the "closed" drawer sat
+   in it in plain sight. visibility keeps it gone until it's actually open, and
+   is delayed by the slide duration so the close animation still plays. */
 #meals-drawer {
   position: fixed; top: 0; bottom: 0; left: max(0px, calc(50% - 240px)); z-index: 15;
   width: min(78vw, 300px); background: var(--surface-2);
   border-right: 1px solid var(--hairline);
-  transform: translateX(-100%); transition: transform .25s ease;
+  transform: translateX(-100%); visibility: hidden;
+  transition: transform .25s ease, visibility 0s linear .25s;
   display: flex; flex-direction: column;
 }
-#meals-drawer.open { transform: translateX(0); }
+#meals-drawer.open {
+  transform: translateX(0); visibility: visible;
+  transition: transform .25s ease, visibility 0s;
+}
 .drawer-head {
   display: flex; align-items: center; gap: 10px; flex: none;
   padding: 22px 14px 10px; border-bottom: 1px solid var(--hairline);
@@ -192,6 +232,12 @@ button { font-family: var(--sans); cursor: pointer; }
   mask-image: linear-gradient(to right, #000 calc(100% - 28px), transparent);
 }
 .drawer-empty { color: var(--muted); font-size: 13px; padding: 14px 4px; line-height: 1.5; }
+
+/* Empty states were an uppercase category label with inline styles — a label
+   shape carrying sentence copy. Sans, not serif: this is the app talking, not
+   an item the user named. */
+.empty { text-align: center; color: var(--muted); font-size: 14px; line-height: 1.5; padding: 40px 20px; }
+.empty .empty-hint { display: block; font-size: 12px; margin-top: 6px; }
 
 #banner {
   position: sticky; top: 0; z-index: 20;

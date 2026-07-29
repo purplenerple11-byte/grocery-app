@@ -91,7 +91,9 @@ function renderList() {
           <button class="step-btn" data-action="qty-plus" aria-label="More">＋</button>
         </span>
       </div>`).join('')}`).join('')
-    || '<div class="cat" style="margin-top:30px;text-align:center">Nothing on the list</div>';
+    || `<div class="empty">Nothing on the list
+          <span class="empty-hint">Add an item above, or open Inventory and tap what you're out of.</span>
+        </div>`;
 }
 
 function renderSheet() {
@@ -100,7 +102,13 @@ function renderSheet() {
   document.getElementById('peek-pills').innerHTML =
     (out ? `<span class="pill"><span class="dot out"></span>${out} out</span>` : '') +
     (low ? `<span class="pill"><span class="dot low"></span>${low} low</span>` : '');
-  document.getElementById('inv-add').hidden = !document.getElementById('sheet').classList.contains('open');
+  /* The collapsed sheet clips its grid with overflow:hidden, but clipped is not
+     unfocusable — 9 tiles and 27 step buttons stayed in the tab order behind a
+     64px bar. `inert` takes the whole grid out until the sheet is open. The bar
+     itself stays live; it's the control that opens the thing. */
+  const sheetOpen = document.getElementById('sheet').classList.contains('open');
+  document.getElementById('inv-add').hidden = !sheetOpen;
+  document.getElementById('sheet-content').inert = !sheetOpen;
 
   const stockedFirst = { secondary: (it) => (it.stock > 0 ? 0 : 1) };
   document.getElementById('inv-grid').innerHTML = Store.groupByCategory(tracked, stockedFirst).map(([cat, items]) => `
@@ -110,7 +118,7 @@ function renderSheet() {
         const status = Store.deriveStatus(it);
         const last = Store.lastPrice(it);
         return `
-        <div class="tile" data-id="${it.id}" data-action="toggle" role="button" tabindex="0">
+        <div class="tile${it.onList ? ' on-list' : ''}" data-id="${it.id}" data-action="toggle" role="button" tabindex="0">
           <span class="name">${escapeHtml(it.name)}</span>
           <span class="bottom">
             <span class="meta">
@@ -125,7 +133,9 @@ function renderSheet() {
         </div>`;
       }).join('')}
     </div>`).join('')
-    || '<div class="cat" style="margin-top:20px;text-align:center">No tracked items yet</div>';
+    || `<div class="empty">No tracked items yet
+          <span class="empty-hint">Tap ＋ Add to start tracking something you keep at home.</span>
+        </div>`;
 }
 
 function renderMeals() {
@@ -660,8 +670,13 @@ document.getElementById('item-cancel').addEventListener('click', () => {
 
 /* ---- Meals drawer ---- */
 function setDrawer(open) {
-  document.getElementById('meals-drawer').classList.toggle('open', open);
-  document.getElementById('meals-drawer').setAttribute('aria-hidden', String(!open));
+  const drawer = document.getElementById('meals-drawer');
+  drawer.classList.toggle('open', open);
+  drawer.setAttribute('aria-hidden', String(!open));
+  /* aria-hidden on a container whose buttons are still focusable is the classic
+     ARIA contradiction: the drawer sits off-screen at translateX(-100%) but you
+     could tab straight into it. `inert` makes the two agree. */
+  drawer.inert = !open;
   document.getElementById('meals-tab').setAttribute('aria-expanded', String(open));
   document.getElementById('meals-scrim').hidden = !open;
   if (open) renderMeals();

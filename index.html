@@ -32,7 +32,7 @@
 <button id="meals-tab" aria-label="Meals" aria-expanded="false" aria-controls="meals-drawer">
   <span class="tab-grip"></span>
 </button>
-<aside id="meals-drawer" aria-hidden="true">
+<aside id="meals-drawer" aria-hidden="true" inert>
   <div class="drawer-head">
     <h3>Meals</h3>
     <button id="meal-save" disabled>＋ Save list</button>
@@ -125,7 +125,7 @@
     <button id="export-pantry-btn">Export pantry</button>
     <p class="dialog-note">Export JSON backs up everything. Export pantry saves just what you have in stock — hand it to an AI to get a meal suggestion.</p>
     <label class="import-label">Add from file<input type="file" id="merge-file" accept="application/json,.json" hidden></label>
-    <label class="import-label">Restore from backup<input type="file" id="restore-file" accept="application/json,.json" hidden></label>
+    <label class="import-label btn-danger">Restore from backup<input type="file" id="restore-file" accept="application/json,.json" hidden></label>
     <p class="dialog-note">Add merges a file in (nothing is deleted). Restore replaces everything.</p>
     <button id="settings-close">Close</button>
   </menu>

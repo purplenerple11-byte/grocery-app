@@ -206,7 +206,15 @@ signal green, yellow, or red — and never a cool grey, blue, or any hue outside
 the warm family, even for informational UI.
 
 **The One-Accent Rule.** There is one accent hue family and no second. A new
-colour is a design failure before it is a design choice.
+colour is a design failure before it is a design choice. This extends to colours
+you did not author: `accent-color` is pinned to Terracotta Slip on `:root`, and
+`::selection` to clay on canvas, because native controls default to system blue
+and would otherwise be the only cool thing on screen.
+
+**The Neutral-Focus Rule.** The focus ring is Bone (`2px`, `2px` offset), never
+a status colour. The browser default renders amber on this canvas, which is
+indistinguishable from the Beeswax "low stock" signal — focus is a mode, not a
+status, and must not borrow a status hue.
 
 ## Typography
 
@@ -232,6 +240,13 @@ stacks, which is what keeps the app instant offline.
 - **Label** (sans, 600, 11px, `0.08em`, uppercase): category headers on both the
   list and the inventory grid, and the price-history heading. The only uppercase
   in the system.
+
+**Size steps actually in use.** The roles above are the system; the
+implementation reaches for more steps than that between them —
+24 / 20 / 16 / 15 / 14 / 13 / 12.5 / 12 / 11 / 10.5 px. The small end is
+crowded: 12, 12.5, and 13 do near-identical work and are a consolidation
+worth making. Documented here so the gap reads as a known rough edge rather
+than as licence to invent an eleventh step.
 
 ### Named Rules
 
@@ -291,8 +306,10 @@ from the layout and is moving under the user's finger or on its own.
 - **In-flight clone** (`box-shadow: 0 4px 16px rgba(0,0,0,.12)`): a cloned
   pre-flight row travelling to its landing place in the list.
 - **Popover** (`box-shadow: 0 4px 12px rgba(0,0,0,0.15)`): the autocomplete menu
-  under the add field — the one static shadow, because the menu overlays content
-  it does not belong to.
+  under the add field, which overlays content it does not belong to.
+- **Floating action** (`box-shadow: 0 4px 14px rgba(0, 0, 0, .35)`): the
+  "Complete trip" button, which is `position: fixed` over the scrolling list.
+  Without it the button read as slicing through whatever row sat behind it.
 
 ### Named Rules
 
@@ -365,8 +382,9 @@ never apply it to a non-committing button.
 
 - **Style:** Sepia Ground, 12px radius (8px inside dialogs), hairline border,
   Bone text, Ash placeholder, 11px/14px padding, full width.
-- **Focus:** no custom treatment — the browser default ring is what ships.
-  *(Provisional: an observed gap, not a designed decision.)*
+- **Focus:** a 2px Bone ring at 2px offset, from the global `:focus-visible`
+  rule. It follows each control's own radius, so it reads as a circle on the
+  check and a pill on a chip.
 - **Labels:** 12px Ash, stacked above the field with 4px of separation.
 - **Number fields** in the trip dialog are pinned to 84px so price rows align.
 
@@ -393,10 +411,17 @@ position.
 appears alone: on a tile it sits beside the count, in the peek bar it sits inside
 a pill reading "3 out". Colour is a second channel, never the only one.
 
-**The dimmed row.** A list row for something already in stock renders at
-`opacity: .5` with an Ash "have 4" note. This must stay visually distinct from
-`.row.done` (clay circle + strikethrough) — dimmed means "you may not need this",
-struck means "it's in the basket".
+**The dimmed row.** A list row for something already in stock drops its name to
+Ash and its check to `opacity: .5`, with an Ash "have 4" note. This must stay
+visually distinct from `.row.done` (clay circle + strikethrough) — dimmed means
+"you may not need this", struck means "it's in the basket". De-emphasis is per
+element on purpose: a blanket `opacity` on the row also dims the note that
+explains the dimming, and drove it to 2.8:1.
+
+**The empty state.** Centred sans at 14px Ash, with a 12px hint below naming the
+control that fixes it ("Tap ＋ Add to start tracking something you keep at
+home."). Never a category label carrying sentence copy, and never serif — the
+app is talking here, not naming something the user owns.
 
 ### Motion
 
@@ -429,6 +454,11 @@ user is dragging tracks the finger with no transition at all.
   16px dialogs, 20px sheet.
 - **Do** keep new UI inside the 480px column and pin fixed elements to the
   column's edges, not the viewport's.
+- **Do** give every focusable control the Bone `:focus-visible` ring, and check
+  it against a real Tab press rather than a programmatic `.focus()`.
+- **Do** hide an off-screen panel with `visibility` (or take it out with
+  `inert`), not by translating it exactly its own width — that only clears the
+  screen while the column is flush to the viewport edge.
 
 ### Don't:
 
@@ -444,5 +474,12 @@ user is dragging tracks the finger with no transition at all.
 - **Don't** add gradients, glows, or background washes; fills are flat and solid.
 - **Don't** let an item name wrap a list row — truncate instead, so row height
   stays stable under a moving thumb.
+- **Don't** de-emphasise a group with a blanket `opacity` when it contains text —
+  drop the specific elements' colours instead, so nothing falls under 4.5:1.
+- **Don't** let a clipped or translated container keep its controls in the tab
+  order. `overflow: hidden` and `translateX(-100%)` hide things from eyes, not
+  from keyboards; pair them with `inert`.
+- **Don't** ship a native control unstyled. `accent-color` is set globally for
+  exactly this reason.
 - **Don't** add ornament in service of a theme or period metaphor. If a
   decoration does not help someone find something faster, it does not ship.
