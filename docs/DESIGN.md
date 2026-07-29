@@ -1,187 +1,448 @@
-# Anthropic — Style Reference
-> scientific field journal on warm parchment — quiet ivory surfaces, editorial serif headlines, and a single clay accent that only appears when you must act
+---
+name: Grocery
+description: A warm dark single-column phone UI where serif names what you own and sans counts it
+colors:
+  canvas: "#141413"
+  surface: "#1f1e1b"
+  surface-2: "#262521"
+  ink: "#faf9f5"
+  muted: "#b0aea5"
+  hairline: "#3d3d3a"
+  clay: "#d97757"
+  clay-deep: "#c6613f"
+  ok: "#7d9b76"
+  low: "#d9a557"
+  out: "#c6613f"
+typography:
+  display:
+    fontFamily: "Georgia, 'Source Serif Pro', Charter, serif"
+    fontSize: "24px"
+    fontWeight: 400
+  headline:
+    fontFamily: "Georgia, 'Source Serif Pro', Charter, serif"
+    fontSize: "20px"
+    fontWeight: 400
+  title:
+    fontFamily: "Georgia, 'Source Serif Pro', Charter, serif"
+    fontSize: "16px"
+    fontWeight: 400
+  body:
+    fontFamily: "Inter, system-ui, -apple-system, Arial, sans-serif"
+    fontSize: "15px"
+    fontWeight: 400
+  caption:
+    fontFamily: "Inter, system-ui, -apple-system, Arial, sans-serif"
+    fontSize: "12px"
+    fontWeight: 400
+  label:
+    fontFamily: "Inter, system-ui, -apple-system, Arial, sans-serif"
+    fontSize: "11px"
+    fontWeight: 600
+    letterSpacing: "0.08em"
+rounded:
+  sm: "8px"
+  md: "12px"
+  tile: "14px"
+  dialog: "16px"
+  sheet: "20px"
+  pill: "999px"
+  circle: "50%"
+spacing:
+  tight: "4px"
+  snug: "6px"
+  base: "8px"
+  control: "11px"
+  gutter: "16px"
+  section: "20px"
+components:
+  button-primary:
+    backgroundColor: "{colors.clay}"
+    textColor: "{colors.canvas}"
+    rounded: "0 0 8px 8px"
+    padding: "12px 28px"
+  button-primary-active:
+    backgroundColor: "{colors.clay-deep}"
+    textColor: "{colors.canvas}"
+  button-ghost:
+    textColor: "{colors.ink}"
+    rounded: "{rounded.sm}"
+    padding: "9px 12px"
+  button-danger:
+    textColor: "{colors.out}"
+    rounded: "{rounded.sm}"
+    padding: "9px 12px"
+  chip-pill:
+    backgroundColor: "{colors.surface}"
+    textColor: "{colors.muted}"
+    rounded: "{rounded.pill}"
+    padding: "3px 10px"
+  input-text:
+    backgroundColor: "{colors.surface}"
+    textColor: "{colors.ink}"
+    rounded: "{rounded.md}"
+    padding: "11px 14px"
+  list-row:
+    backgroundColor: "{colors.surface}"
+    textColor: "{colors.ink}"
+    typography: "{typography.title}"
+    rounded: "{rounded.md}"
+    padding: "9px 13px"
+  inventory-tile:
+    backgroundColor: "{colors.surface}"
+    textColor: "{colors.ink}"
+    rounded: "{rounded.tile}"
+    padding: "6px"
+  check-circle:
+    textColor: "transparent"
+    rounded: "{rounded.circle}"
+    size: "22px"
+  check-circle-checked:
+    backgroundColor: "{colors.clay}"
+    textColor: "{colors.canvas}"
+    rounded: "{rounded.circle}"
+    size: "22px"
+  dialog-surface:
+    backgroundColor: "{colors.surface-2}"
+    textColor: "{colors.ink}"
+    rounded: "{rounded.dialog}"
+    padding: "20px"
+    width: "min(90vw, 360px)"
+  bottom-sheet:
+    backgroundColor: "{colors.surface-2}"
+    rounded: "20px 20px 0 0"
+    height: "64px"
+---
 
-**Theme:** light
+# Design System: Grocery
 
-Anthropic's interface reads like a curated research publication on warm parchment paper. Ivory and oat neutrals replace the typical cool-gray tech palette, giving every surface a paper-like quality that pairs with a custom serif used at unprecedented scale for both body and display text. A single clay-toned accent surfaces only at moments of action; everything else stays quiet and editorial. Components are flat — hairline borders and selective bottom-corner radii replace shadows as the elevation language, sans-serif handles UI chrome, and the serif carries voice.
+## Overview
+
+**Creative North Star: "Modern and Navigable"**
+
+Grocery is a warm dark phone interface built for one hand and partial attention.
+It is a single 480px column: a list you scan top-to-bottom, and a bottom sheet
+you pull up to see everything you own. Nothing floats, nothing decorates, and
+there is exactly one accent colour — so the one orange thing on screen is always
+the thing you can act on.
+
+Depth is tonal, not cast. Three near-black warm greys stack in a fixed order
+(canvas → surface → surface-2), separated by 1px hairlines. That ladder does the
+work shadows usually do, which keeps every surface flat and keeps contrast
+predictable in a supermarket aisle under bad light.
+
+The type system carries the personality instead. A serif names things the user
+owns and typed — item names, meal names, headings. A sans handles everything the
+machine contributes — counts, units, prices, labels, buttons. That split is the
+system's most visible rule and the fastest way to tell whether new UI belongs.
+
+This system began as a deliberate dark inversion of the Anthropic "scientific
+field journal" parchment reference, which previously occupied this file and
+remains in git history (`git log -- docs/DESIGN.md`). The inversion kept that
+reference's rules — warm earth tones, serif for voice, flat surfaces, hairline
+borders, accent reserved for action — and discarded its light canvas.
+
+**Confirmed rejections:** ornamental or period framing. The system is not a
+field notebook, an apothecary cabinet, or any other costume; describing it that
+way leads to decoration that costs scanability. Modern and easy to navigate is
+the goal, and where the two conflict, navigation wins.
+
+**Key Characteristics:**
+
+- One centred 480px column; identical layout on phone and desktop.
+- Three-step tonal ladder plus hairlines; no shadows on anything at rest.
+- Serif for user-authored nouns, sans for machine-authored numbers.
+- A single accent hue family; status stays inside it.
+- Round shapes for state (circles, pills), soft rectangles for content.
 
 ## Colors
 
-| Name | Value | Role |
-|------|-------|------|
-| Slate Dark | `#141413` | Primary text, headings, footer background, hairline borders — near-black with a hint of warmth, never pure black |
-| Ivory Medium | `#f0eee6` | Page canvas and large surface fills — the parchment background that sets the entire warm tone |
-| Ivory Light | `#faf9f5` | Card surfaces, elevated panels, skip-link buttons — one step brighter than canvas for subtle layering without shadows |
-| Cloud Medium | `#b0aea5` | Muted helper text, inactive nav items, secondary labels — the neutral that recedes without disappearing |
-| Cloud Dark | `#87867f` | Outlined button borders, mid-contrast dividers |
-| Stone | `#cccbc8` | Hairline borders and dividers between sections — visible but never assertive |
-| Slate Medium | `#3d3d3a` | Dark-on-dark borders inside the footer |
-| Oat Warm | `#e3dacc` | Secondary warm surface for grouped panels and feature containers — a deeper paper tone for variety |
-| Manilla | `#f5e3c7` | Featured hero card background — vintage paper tone that signals editorial importance without color shouting |
-| Clay | `#d97757` | Filled CTA buttons (e.g. cookie consent accept) — the single chromatic accent in the system, a terracotta warmth that belongs to the earth-tone family rather than typical UI blue |
-| Clay Deep | `#c6613f` | Hover/pressed state for Clay CTAs and the canonical accent token — deeper version of the primary accent |
+A warm, near-monochrome dark palette with one accent hue family — every
+chromatic colour on screen is a clay, a lichen, or an ochre, and there is no
+second family to compete with them.
+
+### Primary
+
+- **Terracotta Slip** (`#d97757`): the only action colour. It fills the
+  check-off circle when an item is in the basket, the 45° corner ribbon on an
+  inventory tile that is on the list, the primary submit button in every dialog,
+  and the border of a row or tile while a long-press is armed. It appears
+  nowhere else.
+- **Burnt Sienna** (`#c6613f`): the pressed state of Terracotta Slip, and — at
+  the same value — the "out of stock" status. Out-of-stock reads as a deepened
+  action colour, which is intentional: something at zero is something to buy.
+
+### Secondary
+
+- **Lichen** (`#7d9b76`): stocked. A desaturated green-grey that sits at the
+  same visual weight as the neutrals rather than signalling "success".
+- **Beeswax** (`#d9a557`): low stock. Warm yellow-ochre, one step brighter than
+  the surface ladder so a low count catches the eye without alarming.
+
+### Neutral
+
+- **Bister** (`#141413`): the page canvas, and the text colour that sits *on*
+  clay fills. Near-black with a warm cast, never pure `#000`.
+- **Sepia Ground** (`#1f1e1b`): the standard raised surface — list rows,
+  inventory tiles, the add field, pills, dialog inputs.
+- **Umber Ground** (`#262521`): the second raised step — the bottom sheet, the
+  meals drawer, dialogs, the error banner. Reserved for things that overlay the
+  page rather than sit in it.
+- **Bone** (`#faf9f5`): primary text on every dark surface. Ivory-tinted, never
+  pure white.
+- **Ash** (`#b0aea5`): secondary text — units, counts, categories, prices,
+  helper copy, and the resting stroke of an unchecked circle.
+- **Graphite Line** (`#3d3d3a`): every hairline border and divider, the sheet
+  grabber, and the drawer tab's grip.
+
+### Named Rules
+
+**The Clay-Is-Action Rule.** Terracotta Slip marks state the user can change or
+has just changed: checked, on-list, submit, armed. It is never a hover tint,
+never a category colour, never decoration. If a new element wants to be orange,
+the question is whether tapping it does something.
+
+**The Earth-Only Rule.** Status is Lichen / Beeswax / Burnt Sienna. Never
+signal green, yellow, or red — and never a cool grey, blue, or any hue outside
+the warm family, even for informational UI.
+
+**The One-Accent Rule.** There is one accent hue family and no second. A new
+colour is a design failure before it is a design choice.
 
 ## Typography
 
-### Anthropic Serif — Editorial voice — used for the display heading at 68px, all body copy at 20px, card titles, and supporting paragraphs. The serif carries personality; its presence in body text (unusual for tech sites) signals research-publication DNA. Weight 400 is default, 600 for emphasis.
-- **Substitute:** Georgia, Source Serif Pro, Charter
-- **Weights:** 400, 600
-- **Sizes:** 14px, 18px, 20px, 24px, 68px
-- **Line height:** 1.10, 1.40, 1.43
-- **Letter spacing:** normal
+**Display / Body Font:** Georgia (with `Source Serif Pro`, Charter, serif)
+**UI Font:** Inter (with `system-ui`, `-apple-system`, Arial, sans-serif)
 
-### Anthropic Sans — UI chrome and display sans — nav links, buttons, footers, badges, and the bold sans display heading at 61px weight 700. The 61px sans display sits beside the 68px serif display as a deliberate dual-system: sans shouts declarative statements, serif reads as editorial essay.
-- **Substitute:** Inter, system-ui, Arial
-- **Weights:** 400, 500, 600, 700
-- **Sizes:** 12px, 15px, 16px, 20px, 24px, 61px
-- **Line height:** 1.00, 1.10, 1.25, 1.30, 1.40
-- **Letter spacing:** -0.0200em at 12px (tight nav/caption tracking), -0.0050em at 15-16px (subtle UI tightening), -0.0020em at larger sizes
+**Character:** A workhorse serif carrying the nouns against a neutral UI sans
+carrying the arithmetic. The serif is set at modest sizes — 16px for an item
+name, 24px at the largest — so it reads as voice rather than as display
+typography. Neither face is loaded from a network; both resolve from system
+stacks, which is what keeps the app instant offline.
 
-### Anthropic Mono — Reserved for code or technical snippets — appears sparingly
-- **Substitute:** JetBrains Mono, SF Mono, Menlo
-- **Weights:** 400
-- **Sizes:** 16px
-- **Line height:** 1.40
+### Hierarchy
 
-### Type Scale
+- **Display** (serif, 400, 24px): the app title in the header. One instance.
+- **Headline** (serif, 400, 20px): dialog titles and the meals drawer heading.
+- **Title** (serif, 400, 16px): item names in list rows, meal names, pre-flight
+  rows, and the "Inventory" label on the sheet bar. The most common serif in the
+  app. Tile names drop to 12.5px/1.2 and clamp to two lines.
+- **Body** (sans, 400, 15px): the add field and the primary button label.
+- **Caption** (sans, 400, 11–13px, Ash): units, quantities, prices, stock
+  counts, helper notes, price history rows.
+- **Label** (sans, 600, 11px, `0.08em`, uppercase): category headers on both the
+  list and the inventory grid, and the price-history heading. The only uppercase
+  in the system.
 
-| Role | Size | Line Height | Letter Spacing |
-|------|------|-------------|----------------|
-| caption | 12px | 1.4 | -0.24px |
-| body-sm | 16px | 1 | -0.08px |
-| body | 20px | 1.4 | — |
-| subheading | 24px | 1.3 | -0.05px |
-| heading | 61px | 1.1 | -0.12px |
-| display | 68px | 1.1 | — |
+### Named Rules
 
-## Spacing & Layout
+**The Serif-Names-It Rule.** If the string came from the user — an item they
+typed, a meal they saved, a heading naming a thing — it is serif. If the app
+produced it — a count, a unit, a price, a category, a button label — it is sans.
+When unsure, ask who authored the string.
 
-**Base unit:** 4px
+**The One-Line Rule.** Item names never wrap in a list row: `.name` is `flex: 1`
+with ellipsis, and the unit and stepper hold their width. A long name truncates
+rather than reflowing the row, because a shifting row height makes a moving list
+unhittable.
 
-**Density:** compact
+## Layout
 
-- **Page max-width:** 1280px
-- **Section gap:** 80-120px
-- **Card padding:** 24-32px
-- **Element gap:** 8px
+A single centred column capped at 480px, applied to `body` and mirrored on the
+fixed sheet, drawer, and trip button so they stay pinned to the column's edges
+rather than the viewport. Desktop gets the phone layout centred, not a wider
+one — there is no responsive breakpoint and no second arrangement.
 
-### Border Radius
+Vertical structure, top to bottom: sticky error banner (hidden by default),
+header, add field, scrolling list, and a fixed bottom sheet. The list carries
+`padding-bottom: 140px` so its last row clears both the collapsed sheet (64px)
+and the trip button floating above it.
 
-- **nav:** 0px
-- **cards:** 24px
-- **links:** 0px
-- **badges:** 0px
-- **buttons:** 8px (bottom-only on filled variants), 12px (outlined)
+The inventory grid is four equal columns of square tiles (`aspect-ratio: 1`)
+with 6px gutters, grouped under collapsible category headers. Four across is a
+fixed decision, not a fluid `auto-fill` — it keeps tile size predictable and
+name truncation consistent.
+
+Rhythm: 16px page gutters, 6px between stacked rows and tiles, 11px between
+controls inside a row, 8px between form fields. Density is deliberately compact;
+a row is 9px/13px of padding around 16px type.
+
+The bottom sheet is the app's second screen. Collapsed it is a 64px bar showing a
+grabber, the label, and status pills. Open it is `86vh`. It animates on `height`,
+and the meals drawer slides in from the column's left edge behind a
+`rgba(0,0,0,.45)` scrim.
+
+## Elevation & Depth
+
+The system is flat by default. Depth is tonal: `#141413` → `#1f1e1b` →
+`#262521`, each step paired with a 1px `#3d3d3a` hairline. A dialog is not
+"above" the page because it casts a shadow; it is above because it is the
+lightest surface in the ladder, sitting over a `rgba(0,0,0,.55)` backdrop.
+
+Shadows exist in exactly one situation: an element that has physically detached
+from the layout and is moving under the user's finger or on its own.
+
+### Shadow Vocabulary
+
+- **Lifted row** (`box-shadow: 0 6px 16px 2px rgba(0,0,0,.25)`): a list row
+  picked up by a swipe. Applied on a 120ms hold, faded in over
+  `box-shadow 0.15s ease-out`, then the transition is stripped so dragging tracks
+  the finger with no lag. Offset, blur, spread, and alpha are all recomputed
+  inline from drag distance.
+- **In-flight clone** (`box-shadow: 0 4px 16px rgba(0,0,0,.12)`): a cloned
+  pre-flight row travelling to its landing place in the list.
+- **Popover** (`box-shadow: 0 4px 12px rgba(0,0,0,0.15)`): the autocomplete menu
+  under the add field — the one static shadow, because the menu overlays content
+  it does not belong to.
+
+### Named Rules
+
+**The Flat-Unless-Detached Rule.** If an element is in the layout, it has no
+shadow. Shadow is the signal that something has left the page — lifted, flying,
+or overlaying. Never use it to make a resting card look elevated; move it up the
+tonal ladder instead.
+
+## Shapes
+
+A radius ladder that scales with the size of the thing: 8px for controls
+(buttons, dialog inputs, the autocomplete menu), 12px for rows, the add field,
+and meal cards, 14px for inventory tiles, 16px for dialogs, 20px for the top
+corners of the bottom sheet. Larger surfaces get rounder corners, so the sheet
+reads as a sheet and a button reads as a button.
+
+Two shapes are fully round rather than on the ladder: `999px` pills for status
+and toggle chips (`.pill`, `＋ Add`, `＋ Save list`, the track toggle), and true
+circles (`50%`) for the check-off control (22px) and steppers (26px / 20px).
+Round means state; soft rectangles mean content.
+
+Borders are always exactly 1px `#3d3d3a`, except the check circle's 1.5px
+stroke, which needs the extra weight to read at 22px.
+
+The one clipped shape in the system is the on-list ribbon: a 28px square in the
+tile's top-right corner cut to a triangle with
+`clip-path: polygon(0 0, 100% 0, 100% 100%)`, filled clay, holding a small ✓.
+
+### Named Rules
+
+**The Bottom-Corner Rule.** The primary commit button — `#complete-trip` and
+every `.btn-clay` — uses `border-radius: 0 0 8px 8px`: square on top, rounded
+below. This is inherited from the parchment reference's signature bottom-only
+radius and is the one asymmetric shape in the app. Never round it uniformly;
+never apply it to a non-committing button.
 
 ## Components
 
-### Text Link Button
-**Role:** Primary inline link styled as a button — used for navigation and inline actions
+### Buttons
 
-Transparent background, #141413 text color, no border, 0px radius, padding 22px 12px. Underline appears on hover. No background fill at any state — this is text that happens to be clickable, not a container.
+- **Shape:** gently rounded (8px), except the primary commit button's
+  bottom-only radius (`0 0 8px 8px`).
+- **Primary:** clay fill, canvas-coloured text, 600 weight, no border, 12px/28px
+  padding. Pressed state deepens to Burnt Sienna. Used for "Complete trip",
+  "Finish trip", "Save", "Add to list" — one per dialog.
+- **Ghost:** transparent, Bone text, 1px hairline, 9px/12px padding, flexed to
+  equal width inside a dialog `<menu>`. The default for Cancel and secondary
+  actions.
+- **Danger:** ghost geometry with text and border in Burnt Sienna. Delete only.
+- **Chip:** pill-shaped (999px), transparent or Sepia Ground, hairline border,
+  3px/10px padding, 10–12px sans. Used for `＋ Add`, `＋ Save list`, and the
+  per-row track toggle. Disabled chips drop to Ash at 50% opacity.
+- **Icon:** the settings gear is a bordered 8px-radius chip at 14px, Ash text.
 
-### Filled Ivory Button
-**Role:** Primary action button on light surfaces
+### Cards / Containers
 
-Background #faf9f5, text #141413, bottom-only border-radius 8px (top corners sharp), padding 12px 31px. The bottom-only radius is a signature choice — the button reads like a tab or card pulled from a stack, not a generic pill. No border, no shadow.
+- **List row:** Sepia Ground, 12px radius, hairline border, 9px/13px padding, 6px
+  below. Contents in a single flex line: check circle, serif name (flex,
+  ellipsised), unit, stepper.
+- **Inventory tile:** Sepia Ground, 14px radius, hairline border, square, 6px
+  padding. Name clamps to two lines at the top; a bottom row holds the status
+  dot, the count, and — pushed right — the last price at 9.5px Ash.
+- **Dialog:** Umber Ground, 16px radius, hairline border, 20px padding,
+  `min(90vw, 360px)` wide, centred, over a `rgba(0,0,0,.55)` backdrop.
+- **Bottom sheet:** Umber Ground, 20px top corners, hairline top border.
+- **Banner:** sticky, Umber Ground, hairline bottom, 13px sans, dismiss ✕ in Ash
+  pushed to the right.
 
-### Outlined Dark Button
-**Role:** Secondary action on dark backgrounds (cookie consent, modal footer)
+### Inputs / Fields
 
-Transparent background, #ffffff text, 1px border in #87867f, 12px radius, padding 8px 16px. Compact size, ghost treatment that lets the dark background show through.
+- **Style:** Sepia Ground, 12px radius (8px inside dialogs), hairline border,
+  Bone text, Ash placeholder, 11px/14px padding, full width.
+- **Focus:** no custom treatment — the browser default ring is what ships.
+  *(Provisional: an observed gap, not a designed decision.)*
+- **Labels:** 12px Ash, stacked above the field with 4px of separation.
+- **Number fields** in the trip dialog are pinned to 84px so price rows align.
 
-### Clay Filled Button
-**Role:** The single chromatic CTA — used sparingly for the most consequential actions
+### Navigation
 
-Background #d97757, white text, 8px radius, padding matching Filled Ivory Button proportions. Reserved for moments where acceptance must be visually distinct from the rest of the editorial interface. Deepens to #c6613f on hover.
+There is no nav bar. Movement between the two screens is physical: the bottom
+sheet bar (tap or swipe up) and a 28×84px tab on the column's left edge for the
+meals drawer, styled as Umber Ground with the left border removed and the right
+corners rounded 12px, holding a 4×32px Graphite Line grip. The tab fades to
+`opacity: 0` while the drawer is open.
 
-### Featured Hero Card
-**Role:** Large editorial card for announcements and story highlights
+### Signature Components
 
-Background #f5e3c7 (manilla), 24px border-radius, no shadow, no border. Generous internal padding (~48-64px) to accommodate large serif display text and editorial illustration. The warm paper tone separates it from ivory cards without using color.
+**The check circle.** A 22px circle with a 1.5px Ash stroke and transparent
+glyph. Checked, it fills clay with a canvas-coloured ✓ and strikes the name
+through in Ash. The pre-flight dialog reuses the identical geometry with a 150ms
+transition, so a staged item looks exactly like a basketed one.
 
-### Release Card
-**Role:** Compact card for latest releases grid
+**The on-list ribbon.** The clay 45° corner triangle on an inventory tile. It is
+allowed to slightly overlap the tile name — an accepted trade for the corner
+position.
 
-Background #faf9f5, 24px radius, 1px border in #cccbc8 or no border, padding ~24px. Title in Anthropic Sans 24px weight 600 or Anthropic Serif 20px, body in serif 20px. Three-column grid layout.
+**The status dot.** A 9px circle in Lichen / Beeswax / Burnt Sienna. It never
+appears alone: on a tile it sits beside the count, in the peek bar it sits inside
+a pill reading "3 out". Colour is a second channel, never the only one.
 
-### Top Navigation Bar
-**Role:** Sticky site navigation
+**The dimmed row.** A list row for something already in stock renders at
+`opacity: .5` with an Ash "have 4" note. This must stay visually distinct from
+`.row.done` (clay circle + strikethrough) — dimmed means "you may not need this",
+struck means "it's in the basket".
 
-Transparent or #f0eee6 background, logo left in Anthropic Sans 12px weight 700 all-caps letter-spaced, nav links right-aligned at 12px sans with #b0aea5 hover-to-#141413 transition. Dropdown indicators as chevrons. The 'Try Claude' button on the right uses Filled Ivory Button styling. No background blur, no shadow.
+### Motion
 
-### Footer
-**Role:** Dark closing section with link columns
+Motion is short and physical. State changes use `.15s`–`.25s` ease; anything the
+user is dragging tracks the finger with no transition at all.
 
-Full-bleed #141413 background, #faf9f5 text, multi-column link grid with 8px link gaps. Section headings in sans 12px weight 600, link items in sans 12px at #b0aea5. The dark footer is the only inversion in the system — a final grounded anchor after all the parchment above.
-
-### Hero Heading Block
-**Role:** Asymmetric first-screen composition
-
-Two-column layout: left holds Anthropic Sans 61px weight 700 heading with inline underlined links mid-phrase; right holds supporting serif paragraph at 20px. Generous whitespace around the block. Headings use #141413, supporting text #141413 at reduced visual weight.
-
-### Inline Underlined Link
-**Role:** Text link embedded in paragraphs and headings
-
-No background, text inherits parent color (#141413), 1px underline always visible (not just on hover) in #141413. The persistent underline is editorial — it matches print convention where links are typeset with underlines, not the UI convention of reveal-on-hover.
-
-### Badge / Inline Label
-**Role:** Small tag for categories and metadata
-
-Transparent background, #141413 text, 0px radius, no padding above/below the text baseline. Effectively just bold or weighted text in flow — not a container. Used sparingly.
-
-### Cookie Consent Bar
-**Role:** Bottom-pinned consent prompt
-
-Dark band (#141413 background) or dark overlay containing body text and three action buttons: Filled Ivory Button (Accept), Outlined Dark Button (Customize, Reject). The contrast inversion makes consent legible against the parchment above.
-
-### Skip Link
-**Role:** Accessibility utility for keyboard navigation
-
-Background #faf9f5, text #141413, small padding, visible only on focus. Positioned absolutely at the top edge.
+- Sheet height and drawer transform: `.25s ease`. Category chevron: `.2s ease`.
+- Swipe release either flings out (`0.14s`–`0.32s ease-out`, scaled by velocity)
+  or snaps back on `transform 0.3s cubic-bezier(.34,1.56,.64,1)` — the one
+  overshoot in the system.
+- Pre-flight items fly to the list as cloned rows: 640ms, 60ms stagger, motion
+  complete at 85% with the remainder a cross-fade hand-off to the real row.
+- Stock `＋`/`−` defers its re-render by 1500ms so a tile does not resort itself
+  out from under a tapping thumb.
 
 ## Do's and Don'ts
 
-### Do
-- Use Anthropic Serif at 20px for all body copy and Anthropic Sans at 12-16px for UI chrome — the serif/sans split defines the system's voice.
-- Use #f0eee6 as the page canvas and #faf9f5 for cards; reach for #f5e3c7 only when a card needs to feel like a featured editorial spread.
-- Use the bottom-only 8px radius on filled buttons (Filled Ivory Button); this signature corner treatment replaces the generic pill.
-- Use #d97757 Clay exclusively for the most consequential single CTA on any given page; never apply it to multiple actions or decorative elements.
-- Keep underlines persistent on inline links — editorial print convention, not reveal-on-hover.
-- Reach for 24px radius on all card-level surfaces to maintain the paper-stacked feel.
-- Use the 61px sans weight 700 paired with the 68px serif weight 400 as the dual display system — sans for declarative statements, serif for editorial reflection.
+### Do:
 
-### Don't
-- Don't introduce cool grays, blues, or any color outside the warm earth-tone family — the palette is ivory/oat/clay, period.
-- Don't use box-shadow for elevation — this system elevates through surface tone (#f0eee6 → #faf9f5 → #f5e3c7) and 1px borders only.
-- Don't use the Clay accent for decoration, icons, hover states, or non-CTA elements; reserve #d97757 for filled action buttons only.
-- Don't set body text in sans-serif — body must be serif at 20px; sans is UI chrome only.
-- Don't apply uniform border-radius to buttons; the bottom-only 8px is a signature, not a default that should be rounded everywhere.
-- Don't use bright white (#ffffff) as a surface — the system is ivory-tinted throughout (#faf9f5, #f0eee6, #f5e3c7); pure white would feel clinical and break the paper metaphor.
-- Don't add gradients, glows, or color washes to backgrounds; surfaces are flat solid fills only.
+- **Do** reserve Terracotta Slip (`#d97757`) for action state only — checked,
+  on-list, submit, armed.
+- **Do** set user-authored nouns in Georgia serif and machine-authored numbers in
+  Inter sans.
+- **Do** create depth by moving up the tonal ladder (`#141413` → `#1f1e1b` →
+  `#262521`) with a 1px `#3d3d3a` hairline.
+- **Do** give the primary commit button the bottom-only radius (`0 0 8px 8px`).
+- **Do** pair every status colour with a number or a word — "3 out", a count on
+  the tile — so hue is never the only channel.
+- **Do** scale radius with surface size: 8px controls, 12px rows, 14px tiles,
+  16px dialogs, 20px sheet.
+- **Do** keep new UI inside the 480px column and pin fixed elements to the
+  column's edges, not the viewport's.
 
-## Elevation
+### Don't:
 
-- **Card:** `none — elevated through surface tone shift, not shadow`
-- **Button:** `none — identity through fill color and bottom-corner radius`
-- **Navigation:** `none — flat, relies on tonal difference from page canvas`
-
-## Surfaces
-
-- **Canvas** (`#f0eee6`) — Page-level background — the parchment that everything sits on
-- **Card Surface** (`#faf9f5`) — Standard card and elevated panel — one tonal step above canvas
-- **Warm Feature Surface** (`#f5e3c7`) — Featured hero card and editorial highlights — manilla paper tone for visual emphasis
-- **Deep Warm Surface** (`#e3dacc`) — Secondary grouped panels and deeper warm containers
-- **Inversion Surface** (`#141413`) — Footer and dark utility bands — the only dark surface in the system
-
-## Imagery
-
-Imagery leans heavily into vintage scientific illustration: the hero feature card contains a dense botanical/zoological collage of butterflies and moths rendered in classic naturalist plate style, evoking 19th-century field guides. Illustrations are warm-toned to harmonize with the parchment background rather than pop against it. No photography, no product screenshots, no abstract gradients. Iconography is minimal — small chevrons for dropdowns and sparse line indicators, always in the same warm-neutral family as text. The visual density is low: large blocks of text and whitespace dominate, with imagery appearing only at hero-feature scale.
-
-## Similar Brands
-
-- **Arc Browser** — Same warm parchment neutrals and nature-inspired accent palette, editorial type treatment, and rejection of cold tech-blue UI conventions
-- **Stripe** — Editorial documentation aesthetic with serif body text paired with sans UI, warm grays instead of cool blues, and section-based max-width reading layout
-- **Notion** — Type-driven minimal interface where typography carries hierarchy more than color or shadow, generous whitespace, restrained palette
-- **Linear** — Monochrome restraint and the discipline of using a single accent color only at decisive action moments
-- **Cursor** — Contemporary AI-product visual language with custom sans + serif type pairing and minimal decorative chrome
+- **Don't** introduce a second accent hue, a cool grey, or a blue — even for
+  informational UI.
+- **Don't** use stock green / yellow / red for status; it is Lichen, Beeswax, and
+  Burnt Sienna.
+- **Don't** add `box-shadow` to anything at rest. Shadow means detached — lifted,
+  in flight, or overlaying.
+- **Don't** use pure white (`#ffffff`) or pure black (`#000000`); the system is
+  warm-tinted at both ends (`#faf9f5`, `#141413`).
+- **Don't** set body copy, counts, or button labels in the serif.
+- **Don't** add gradients, glows, or background washes; fills are flat and solid.
+- **Don't** let an item name wrap a list row — truncate instead, so row height
+  stays stable under a moving thumb.
+- **Don't** add ornament in service of a theme or period metaphor. If a
+  decoration does not help someone find something faster, it does not ship.
