@@ -27,8 +27,9 @@ assets/app.js              all UI: rendering, event delegation, dialogs
 sw.js                      service worker; bump `const CACHE` when assets change
 tools/make_icons.py        regenerates icons/ (stdlib only, no Pillow)
 tests/run-tests.html       open in browser to run tests
-tests/store.test.js        26 tests, all passing
-docs/DESIGN.md             visual style reference (source of truth for look)
+tests/store.test.js        63 tests, all passing
+PRODUCT.md                 durable product truth (users, mechanism, constraints)
+docs/DESIGN.md             the implemented dark system (source of truth for look)
 docs/superpowers/specs/    the design spec — read this first
 docs/superpowers/plans/    v1 implementation plan (historical)
 .superpowers/sdd/          v1 build ledger + per-task reports (historical)
@@ -79,11 +80,30 @@ python3 -m http.server 8000        # from repo root; service worker needs http
 ## Status
 
 **Shipped and live:** v1 (list, inventory sheet, trip loop, export/import, PWA),
-V2 (price + store history), V3 (saved meals). V4 items #1 (merge import) and #2
-(sorting + new categories) are built. 59 tests passing.
+V2 (price + store history), V3 (saved meals), all five V4 items (merge import,
+sorting + new categories, UI/interaction tweaks, meal pre-flight modal,
+quick-add autocomplete), and V5's pantry export. 63 tests passing.
 
 **Awaiting the user's real-device review of V3, V4-#1, and V4-#2.** Checklists
 were given. If they report a bug, that takes priority over new work.
+
+**V5 — pantry export (built, merged as PR #1 on 2026-07-22).** Landed from a
+separate Claude session, not this thread. `⚙ → Export pantry` writes only
+tracked items with `stock > 0`, via the pure `Store.serializePantry`. The shape
+is deliberately *not* the backup format: `{ exportedAt, pantry: [{ name,
+category, stock, unit? }] }` — no ids, prices, list state, or timestamps, since
+none of those help a recommendation. Items come out in `CATEGORY_ORDER` so the
+file reads top-to-bottom like a shelf; `unit` is omitted when empty rather than
+emitted blank. Empty stock is a valid empty export, but the button short-circuits
+to a banner ("Nothing in stock to export yet.") instead of downloading it.
+Blob-download logic was factored out of the existing export into a shared
+`downloadJson()`. 4 new tests (filtering, minimal shape, category ordering,
+empty stock).
+
+This is the *outbound* half of backlog item #1's AI workflow — "Add from file"
+already handled inbound. The pair is now: export pantry → ask an assistant →
+add its suggestions back. Note the round trip is still incomplete in one place:
+AI-generated *meals* with throwaway ids aren't remapped on merge import.
 
 **V4 item #2 verification note:** unit-test coverage for the new
 `Store.groupByCategory`/`CATEGORY_ORDER` logic is solid (59/59 passing, includes
@@ -236,8 +256,16 @@ the implementer where an item collides with existing code.
 - **Delegate verification to an independent subagent.** This caught a real
   ship-blocking bug in V2 (native form validation silently killed the
   "Finish trip" button) that the author had missed.
-- Design decisions live in `docs/DESIGN.md` and the spec. The dark theme is a
-  deliberate inversion of that light "parchment" reference: keep the warm
-  earth-tone palette, serif for voice, sans for UI chrome, flat surfaces with
-  hairline borders, and **clay reserved for action state only** (status colors
-  are sage/ochre/clay — never green/yellow/red).
+- Design decisions live in `docs/DESIGN.md` and the spec. **As of 2026-07-29
+  that file documents the app's own dark system**, not the light Anthropic
+  "parchment" reference it was inverted from — the reference is still in git
+  history if you need it (`git log -- docs/DESIGN.md`). Read the named rules
+  before touching UI; the load-bearing ones are **Clay-Is-Action** (clay only
+  ever marks checked/on-list/submit/armed), **Serif-Names-It** (serif for
+  strings the user typed, sans for numbers the app produced),
+  **Flat-Unless-Detached** (shadows only on things that left the layout), and
+  status colors staying sage/ochre/clay — never green/yellow/red.
+- Product truth lives in `PRODUCT.md` (added 2026-07-29): who uses it, the
+  trip-loop mechanism, the no-build/no-npm constraints, and which constraints
+  are permanent vs. merely current. Notably, **single-device is today's
+  constraint, not a principle** — don't design in a way that forecloses sync.

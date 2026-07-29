@@ -55,6 +55,10 @@ the moment of truth (checkout) is also the moment of data capture.
   second tab holds IndexedDB open and hangs the DB tests.
 - Data lives only on the device. JSON export/import is the only backup, and the
   only way data moves between devices.
+- **Handing the pantry to an AI is a real part of the workflow.** "Export
+  pantry" writes just what's in stock, in a compact shape meant to be given to
+  an assistant to answer "what can I cook?". It is a one-way hand-off, not a
+  backup, and deliberately not re-importable.
 
 ## Capabilities and Constraints
 
@@ -63,7 +67,8 @@ stepper; inventory sheet with tile grid, status dots, and stock steppers; the
 trip-completion loop; price + store history per item; saved meals with a
 pre-flight modal for pruning; swipe-to-remove; collapsible inventory categories;
 autocomplete on the quick-add field; strict restore and additive merge import;
-JSON export; PWA install and offline shell.
+JSON export; pantry export for AI meal suggestions; PWA install and offline
+shell.
 
 **Technical constraints that are deliberate, not incidental:**
 
@@ -90,6 +95,9 @@ JSON export; PWA install and offline shell.
 - **Trip** — one shopping run, ended by "Complete trip", which is what restocks.
 - **Meal** — a named set of item ids. It never copies item data, so renaming an
   item updates every meal and deleting one just drops it out.
+- **Pantry** — not a separate store: the tracked items with `stock > 0`, i.e.
+  what inventory shows minus everything at zero. The word exists only for the
+  AI export; the screen is still called Inventory.
 
 **Explicitly undecided:**
 
