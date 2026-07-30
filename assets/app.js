@@ -620,12 +620,24 @@ document.getElementById('inv-grid').addEventListener('click', (e) => {
 
 let dialogItemId = null; // null = creating a new item
 
+const NEW_CATEGORY = '__new__'; // sentinel option value; never stored on an item
+let lastCategory = 'Other';     // restores the select if the new-category prompt is cancelled
+
 function openItemDialog(item) {
   dialogItemId = item ? item.id : null;
   const form = document.getElementById('item-form');
   document.getElementById('item-dialog-title').textContent = item ? 'Edit item' : 'New inventory item';
   form.elements.name.value = item ? item.name : '';
-  form.elements.category.value = item && CATEGORY_ORDER.includes(item.category) ? item.category : 'Other';
+  /* Built fresh each open: the list depends on current data, and an item whose
+     category isn't built in must still show its own category rather than
+     falling back to Other (which a save would then make permanent). */
+  const current = (item && item.category) || 'Other';
+  const sel = form.elements.category;
+  sel.innerHTML = Store.categoryChoices(state.items, current)
+    .map((c) => `<option value="${escapeHtml(c)}">${escapeHtml(c)}</option>`).join('')
+    + `<option value="${NEW_CATEGORY}">＋ New category…</option>`;
+  sel.value = current;
+  lastCategory = current;
   form.elements.unit.value = item ? item.unit : '';
   form.elements.tracked.checked = item ? item.tracked : true;
   form.elements.stock.value = item ? item.stock : 0;
@@ -643,12 +655,33 @@ function openItemDialog(item) {
   document.getElementById('item-dialog').showModal();
 }
 
+/* "＋ New category…": prompt, add the option, select it. A category is just a
+   string on the item, so nothing is persisted until the item itself is saved. */
+document.getElementById('item-form').elements.category.addEventListener('change', (e) => {
+  const sel = e.target;
+  if (sel.value !== NEW_CATEGORY) { lastCategory = sel.value; return; }
+  const name = (prompt('New category name') || '').trim();
+  if (!name) { sel.value = lastCategory; return; } // cancelled — put the select back
+  // Re-use an option that already matches, so casing variants don't split a category.
+  const existing = [...sel.options]
+    .find((o) => o.value !== NEW_CATEGORY && o.value.toLowerCase() === name.toLowerCase());
+  if (!existing) {
+    const opt = document.createElement('option');
+    opt.value = name;
+    opt.textContent = name;
+    sel.add(opt, sel.options[sel.options.length - 1]); // keep "＋ New category…" last
+  }
+  sel.value = existing ? existing.value : name;
+  lastCategory = sel.value;
+});
+
 document.getElementById('item-form').addEventListener('submit', (e) => {
   e.preventDefault();
   const f = e.target.elements;
   const fields = {
     name: f.name.value.trim(),
-    category: f.category.value,
+    // Guard: the sentinel is always swapped out above, but it must never reach an item.
+    category: f.category.value === NEW_CATEGORY ? lastCategory : f.category.value,
     unit: f.unit.value.trim(),
     tracked: f.tracked.checked,
     stock: Math.max(0, parseInt(f.stock.value, 10) || 0),

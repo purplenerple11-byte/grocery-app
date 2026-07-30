@@ -22,6 +22,35 @@ test('createItem trims name and accepts overrides', () => {
   assertEqual(it.unit, 'cartons');
 });
 
+test('categoryChoices lists built-ins in shelf order', () => {
+  const choices = Store.categoryChoices([]);
+  assertEqual(choices, Store.CATEGORY_ORDER);
+  assert(choices.includes('Canned') && choices.includes('Jarred'), 'canned/jarred are built in');
+});
+
+test('categoryChoices surfaces categories that only exist in the data', () => {
+  const items = [
+    Store.createItem('Kimchi', { category: 'Ferments' }), // e.g. arrived via merge import
+    Store.createItem('Milk', { category: 'Dairy' }),      // already built in — not duplicated
+  ];
+  const choices = Store.categoryChoices(items);
+  assertEqual(choices.filter((c) => c === 'Dairy').length, 1, 'no duplicate for a known category');
+  assertEqual(choices[choices.length - 1], 'Ferments', 'unknown category sorts after the built-ins');
+});
+
+test('categoryChoices always includes the current category', () => {
+  // The editor must be able to show a category no item carries any more,
+  // otherwise opening the item would silently reset it to Other on save.
+  assert(Store.categoryChoices([], 'Bulk bins').includes('Bulk bins'), 'current is present');
+  assertEqual(Store.categoryChoices([], 'Dairy').length, Store.CATEGORY_ORDER.length, 'known current adds nothing');
+});
+
+test('categoryChoices sorts multiple unknown categories alphabetically', () => {
+  const items = [Store.createItem('a', { category: 'Zest' }), Store.createItem('b', { category: 'Ferments' })];
+  const extra = Store.categoryChoices(items).slice(Store.CATEGORY_ORDER.length);
+  assertEqual(extra, ['Ferments', 'Zest']);
+});
+
 test('deriveStatus: 0 = out, <= lowAt = low, else stocked', () => {
   const base = Store.createItem('Eggs', { tracked: true, lowAt: 3 });
   assertEqual(Store.deriveStatus({ ...base, stock: 0 }), 'out');

@@ -57,13 +57,10 @@
   <form id="item-form">
     <h3 id="item-dialog-title">Edit item</h3>
     <label>Name <input name="name" required></label>
+    <!-- Options are built in openItemDialog from Store.categoryChoices, so
+         categories that arrived via import are selectable and preserved. -->
     <label>Category
-      <select name="category">
-        <option>Produce</option><option>Dairy</option><option>Meat</option>
-        <option>Frozen</option><option>Pantry</option><option>Condiments</option>
-        <option>Spices</option><option>Drinks</option><option>Household</option>
-        <option>Other</option>
-      </select>
+      <select name="category"></select>
     </label>
     <label>Unit (label only) <input name="unit" placeholder="e.g. cartons"></label>
     <label class="check-label"><input type="checkbox" name="tracked"> Track in inventory</label>
