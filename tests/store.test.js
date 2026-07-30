@@ -25,7 +25,10 @@ test('createItem trims name and accepts overrides', () => {
 test('categoryChoices lists built-ins in shelf order', () => {
   const choices = Store.categoryChoices([]);
   assertEqual(choices, Store.CATEGORY_ORDER);
-  assert(choices.includes('Canned') && choices.includes('Jarred'), 'canned/jarred are built in');
+  assert(choices.includes('Canned & Jarred'), 'canned/jarred is one built-in category');
+  // The singular forms were duplicates of the plurals; they must not come back.
+  assert(!choices.includes('Spice') && !choices.includes('Condiment'), 'no singular duplicates');
+  assert(!choices.includes('Canned') && !choices.includes('Jarred'), 'not split into two');
 });
 
 test('categoryChoices surfaces categories that only exist in the data', () => {

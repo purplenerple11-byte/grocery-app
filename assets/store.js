@@ -8,7 +8,16 @@ function newId() {
 
 /* Fixed display order for known categories; anything else (including future
    user-added categories) sorts alphabetically after all of these. */
-const CATEGORY_ORDER = ['Produce', 'Dairy', 'Meat', 'Frozen', 'Pantry', 'Canned', 'Jarred', 'Condiments', 'Spices', 'Drinks', 'Household', 'Other'];
+/* Shelf order. Singular variants ('Spice', 'Condiment') are deliberately absent:
+   they were duplicates of the plural and got folded in. 'Canned & Jarred' is one
+   category, not two — splitting it into 'Canned' and 'Jarred' just produced a
+   third redundant option next to the one the data actually used. */
+const CATEGORY_ORDER = [
+  'Produce', 'Dairy', 'Meat', 'Frozen',
+  'Grains & Starch', 'Baking', 'Pantry', 'Canned & Jarred',
+  'Oil & Vinegar', 'Condiments', 'Spices',
+  'Drinks', 'Household', 'Other'
+];
 
 const Store = {
   CATEGORY_ORDER,
