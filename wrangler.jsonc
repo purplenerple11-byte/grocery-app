@@ -1,0 +1,16 @@
+{
+  // Cloudflare Workers static-assets config. This exists ONLY so Cloudflare
+  // knows what to serve; nothing here runs locally. There is still no build
+  // step, no npm install, and no node_modules in this project — `npx wrangler
+  // deploy` runs in Cloudflare's own CI, not on a developer machine.
+  //
+  // Why Cloudflare rather than GitHub Pages: *.github.io is ONE origin shared
+  // by every repo on the account, and localStorage is per-origin, not
+  // per-path — so any other Pages site under the same account could read this
+  // app's Supabase session token. A *.workers.dev subdomain is its own origin.
+  "name": "grocery-app",
+  "compatibility_date": "2026-08-04",
+  "assets": {
+    "directory": "./"
+  }
+}
