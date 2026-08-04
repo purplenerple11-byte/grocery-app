@@ -57,8 +57,8 @@ the moment of truth (checkout) is also the moment of data capture.
 ## Operating Context
 
 - Phone-first, installed to the home screen as a PWA; usable offline in a store.
-- Deployed from `main` to GitHub Pages at
-  https://purplenerple11-byte.github.io/grocery-app/ — **pushing to `main`
+- Deployed from `main` to Cloudflare Pages at
+  https://grocery-app-rie.pages.dev/ — **pushing to `main`
   publishes it** (~1 min). Repo: `github.com/purplenerple11-byte/grocery-app`.
 - Run locally with `python3 -m http.server 8000` from the repo root (the service
   worker needs http, not `file://`).

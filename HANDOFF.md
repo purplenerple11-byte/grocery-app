@@ -13,9 +13,10 @@ that restocks inventory by the quantity you actually bought.
 - **Storage:** IndexedDB, write-through on every change. In-memory fallback +
   banner if unavailable. JSON export/import is the account-free backup; signed
   in, data also syncs to the household (see Sync).
-- **Deployed:** GitHub Pages → https://purplenerple11-byte.github.io/grocery-app/
+- **Deployed:** Cloudflare Pages → https://grocery-app-rie.pages.dev/
   Repo `github.com/purplenerple11-byte/grocery-app`, branch `main`.
-  Pages deploys from `main` root — **pushing to main publishes it** (~1 min).
+  Deploys from `main` root on push — **pushing to main publishes it** (~1 min).
+  No build command, no config file: Cloudflare copies the repo and serves it.
 - **Household sync (built 2026-08-04).** Supabase Postgres + RLS behind
   magic-link auth. IndexedDB is still the read source of truth and the app is
   fully usable signed-out and offline; the network is a background reconciler.
@@ -86,11 +87,22 @@ RLS is on for all five tables and every policy is `to authenticated`, with
 insert and RPC all return `42501`. The `service_role` key must never enter the
 repo — that is also why invites are codes rather than emails.
 
-**Outstanding:** the app is still on GitHub Pages, where `*.github.io` is one
-origin shared by every repo on the account and `localStorage` is per-origin —
-so any other Pages site under this account could read the session token. The
-plan is to move to Cloudflare Pages, which gives the app its own origin. Until
-then, do not publish untrusted code to another repo on this account.
+**Hosting moved off GitHub Pages (2026-08-04), for a security reason worth
+remembering.** `*.github.io` is ONE origin shared by every repo on the account,
+and `localStorage` — where the Supabase session lives — is per-origin, not
+per-path. Any other Pages site published under the same account could therefore
+read this app's session token and take over the household. `github.io` is on
+the Public Suffix List, so other *users* were isolated; other *repos of the
+same user* were not.
+
+Cloudflare Pages gives the app its own origin, which removes the problem rather
+than mitigating it. Deployment stays build-free: no command, no config file, no
+npm. The Workers path was rejected during setup precisely because it required
+`npx wrangler deploy`, which Product Principle #5 disallows regardless of it
+only running in CI.
+
+If the old GitHub Pages deployment is still installed anywhere, sign out of it
+— its session token remains valid until it is.
 
 ## Layout
 
