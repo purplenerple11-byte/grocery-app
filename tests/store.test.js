@@ -99,7 +99,7 @@ test('outLowCounts counts tracked items only', () => {
 test('serialize/validateImport round-trip', () => {
   const items = [Store.createItem('Milk', { tracked: true })];
   const data = JSON.parse(Store.serialize(items));
-  assertEqual(data.version, 2); // bumped in V3 to carry meals
+  assertEqual(data.version, 3); // V3 added meals, V6 added timestamps + tombstones
   assertEqual(Store.validateImport(data), true);
 });
 
@@ -371,23 +371,29 @@ test('pruneMeals drops dangling ids and leaves untouched meals identical', () =>
   assert(untouched === clean, 'unchanged meal is the same object, so callers can skip a write');
 });
 
-test('serialize is v2 and carries meals', () => {
+test('serialize is v3 and carries meals', () => {
   const a = Store.createItem('Tortillas');
   const meal = Store.createMeal('Tacos', [a.id]);
   const data = JSON.parse(Store.serialize([a], [meal]));
-  assertEqual(data.version, 2);
+  assertEqual(data.version, 3);
   assertEqual(data.meals.length, 1);
   assertEqual(data.meals[0].name, 'Tacos');
   assertEqual(JSON.parse(Store.serialize([a])).meals, [], 'meals default to empty');
 });
 
-test('validateImport accepts v1 backups and v2 with meals', () => {
+test('validateImport accepts v1 backups, v2 with meals, and v3 with tombstones', () => {
   const good = Store.createItem('Milk');
   const meal = Store.createMeal('Tacos', [good.id]);
   assertEqual(Store.validateImport({ version: 1, items: [good] }), true, 'v1 still loads');
   assertEqual(Store.validateImport({ version: 2, items: [good], meals: [meal] }), true);
   assertEqual(Store.validateImport({ version: 2, items: [good] }), true, 'v2 without meals is fine');
-  assertEqual(Store.validateImport({ version: 3, items: [good] }), false, 'unknown version rejected');
+  assertEqual(Store.validateImport({ version: 3, items: [good], meals: [meal] }), true, 'v3 loads');
+  assertEqual(Store.validateImport({ version: 4, items: [good] }), false, 'unknown version rejected');
+  // v1/v2 records predate deletedAt, so absent must stay valid; junk must not.
+  const { deletedAt, ...noStamp } = good;
+  assertEqual(Store.validateImport({ version: 1, items: [noStamp] }), true, 'absent deletedAt is fine');
+  assertEqual(Store.validateImport({ version: 3, items: [{ ...good, deletedAt: 'soon' }] }), false);
+  assertEqual(Store.validateImport({ version: 3, items: [{ ...good, deletedAt: NaN }] }), false);
 });
 
 test('validateImport rejects malformed meals', () => {
@@ -608,4 +614,374 @@ test('groupByCategory does not mutate the input array', () => {
   const before = items.map((i) => i.name);
   Store.groupByCategory(items);
   assertEqual(items.map((i) => i.name), before, 'caller\'s array order untouched');
+});
+
+/* ── V6: tombstones, monotonic clock, sync reconciliation ── */
+
+test('softDelete tombstones an item and clears its list state', () => {
+  const it = Store.createItem('Milk', { onList: true, listQty: 3, checked: true });
+  const gone = Store.softDelete(it);
+  assert(typeof gone.deletedAt === 'number', 'deletedAt stamped');
+  assertEqual(gone.deletedAt, gone.updatedAt, 'delete is a write, stamped like one');
+  assertEqual(gone.onList, false, 'a deleted item must not linger on the list');
+  assertEqual(gone.checked, false);
+  assertEqual(gone.listQty, 3, 'other fields survive so the record stays diffable');
+});
+
+test('softDelete leaves meals without list fields', () => {
+  const meal = Store.createMeal('Tacos', ['a']);
+  const gone = Store.softDelete(meal);
+  assert(typeof gone.deletedAt === 'number');
+  assert(!('onList' in gone), 'meals gain no spurious item fields');
+});
+
+test('live filters tombstones, including records that predate the field', () => {
+  const a = Store.createItem('A');
+  const b = Store.softDelete(Store.createItem('B'));
+  const { deletedAt, ...legacy } = Store.createItem('C'); // written before tombstones existed
+  assertEqual(Store.live([a, b, legacy]).map((r) => r.name), ['A', 'C']);
+});
+
+test('updatedAt is monotonic even when the device clock runs backwards', () => {
+  const future = Store.createItem('Milk', { updatedAt: Date.now() + 600000 }); // clock 10 min fast
+  const next = Store.update(future, { stock: 2 });
+  assert(next.updatedAt > future.updatedAt, 'never goes backwards on a record');
+  const meal = Store.createMeal('Tacos', ['a'], { updatedAt: Date.now() + 600000 });
+  assert(Store.updateMeal(meal, { name: 'T2' }).updatedAt > meal.updatedAt);
+});
+
+test('createItem reconstructs a remote record faithfully', () => {
+  const it = Store.createItem('Milk', {
+    id: 'milk', createdAt: 1000, updatedAt: 2000, deletedAt: 3000, checked: true
+  });
+  assertEqual(it.createdAt, 1000, 'a hardcoded now would corrupt conflict resolution');
+  assertEqual(it.updatedAt, 2000);
+  assertEqual(it.deletedAt, 3000);
+  assertEqual(it.checked, true);
+});
+
+test('reconcile: newer side wins, ties go to local', () => {
+  const local = Store.createItem('Milk', { id: 'm', stock: 1, updatedAt: 100 });
+  const remote = Store.createItem('Milk', { id: 'm', stock: 9, updatedAt: 200 });
+  assertEqual(Store.reconcileRecord(local, remote).stock, 9, 'remote newer wins');
+  assertEqual(Store.reconcileRecord(remote, local).stock, 9, 'order-independent');
+  const tie = Store.createItem('Milk', { id: 'm', stock: 5, updatedAt: 100 });
+  assertEqual(Store.reconcileRecord(local, tie).stock, 1, 'tie goes to local');
+});
+
+test('reconcile: a missing side is not a conflict', () => {
+  const it = Store.createItem('Milk', { id: 'm' });
+  assertEqual(Store.reconcileRecord(null, it), it, 'remote-only record is adopted');
+  assertEqual(Store.reconcileRecord(it, null), it, 'local-only record survives a delta');
+  assertEqual(Store.reconcileRecord(null, null), null);
+});
+
+test('reconcile: prices union in both directions, even for the losing side', () => {
+  let local = Store.createItem('Milk', { id: 'm', updatedAt: 500 });
+  local = Store.addPrice(local, 3.5, 'Aldi');
+  local = Store.update(local, { updatedAt: 500 });
+  let remote = Store.createItem('Milk', { id: 'm', updatedAt: 900 });
+  remote = Store.addPrice(remote, 4.25, 'Coles');
+  remote = Store.update(remote, { updatedAt: 900 });
+
+  const merged = Store.reconcileRecord(local, remote);
+  assertEqual(merged.prices.length, 2, 'the loser keeps its price too');
+  const stores = merged.prices.map((p) => p.store).sort();
+  assertEqual(stores, ['Aldi', 'Coles']);
+});
+
+test('reconcile: delete beats a newer edit and never comes back', () => {
+  const deleted = Store.createItem('Milk', { id: 'm', updatedAt: 100, deletedAt: 100 });
+  const edited = Store.createItem('Milk', { id: 'm', updatedAt: 900, stock: 7 });
+  const merged = Store.reconcileRecord(edited, deleted);
+  assertEqual(merged.stock, 7, 'the newer edit still wins the ordinary fields');
+  assertEqual(merged.deletedAt, 100, 'but the record stays deleted');
+  assertEqual(Store.live([merged]).length, 0);
+
+  const twice = Store.reconcileRecord(merged, edited);
+  assertEqual(twice.deletedAt, 100, 'deletedAt never returns to null');
+});
+
+test('reconcile: earliest deletedAt and createdAt win', () => {
+  const a = Store.createItem('Milk', { id: 'm', createdAt: 500, updatedAt: 900, deletedAt: 900 });
+  const b = Store.createItem('Milk', { id: 'm', createdAt: 100, updatedAt: 100, deletedAt: 300 });
+  const merged = Store.reconcileRecord(a, b);
+  assertEqual(merged.createdAt, 100);
+  assertEqual(merged.deletedAt, 300, 'the first delete is the real one');
+});
+
+test('reconcileRecords re-enqueues records the local side won', () => {
+  const localWins = Store.createItem('Milk', { id: 'm', stock: 1, updatedAt: 900 });
+  const remoteWins = Store.createItem('Eggs', { id: 'e', stock: 1, updatedAt: 100 });
+  const delta = [
+    Store.createItem('Milk', { id: 'm', stock: 9, updatedAt: 100 }),
+    Store.createItem('Eggs', { id: 'e', stock: 9, updatedAt: 900 })
+  ];
+  const { records, toPush } = Store.reconcileRecords([localWins, remoteWins], delta);
+  assertEqual(records.length, 2);
+  assertEqual(records.find((r) => r.id === 'm').stock, 1);
+  assertEqual(records.find((r) => r.id === 'e').stock, 9);
+  assertEqual(toPush, ['m'], 'the side the server does not know about must be pushed back');
+});
+
+test('reconcileRecords adopts remote-only rows and keeps local-only ones', () => {
+  const localOnly = Store.createItem('Bread', { id: 'b', updatedAt: 100 });
+  const remoteOnly = Store.createItem('Rice', { id: 'r', updatedAt: 100 });
+  const { records, toPush } = Store.reconcileRecords([localOnly], [remoteOnly]);
+  assertEqual(records.map((r) => r.id).sort(), ['b', 'r']);
+  assertEqual(toPush, [], 'a local-only record is the outbox\'s job, not the reconciler\'s');
+});
+
+test('reconciling the same delta twice is a no-op', () => {
+  const local = [Store.createItem('Milk', { id: 'm', stock: 1, updatedAt: 100 })];
+  const delta = [Store.createItem('Milk', { id: 'm', stock: 9, updatedAt: 900 })];
+  const once = Store.reconcileRecords(local, delta);
+  const twice = Store.reconcileRecords(once.records, delta);
+  assertEqual(twice.records, once.records, 'idempotent — replaying the cursor overlap is free');
+  assertEqual(twice.toPush, []);
+});
+
+test('reconcileSnapshot handles items and meals together', () => {
+  const local = { items: [Store.createItem('Milk', { id: 'm', updatedAt: 900 })], meals: [] };
+  const remote = {
+    items: [Store.createItem('Milk', { id: 'm', updatedAt: 100 })],
+    meals: [Store.createMeal('Tacos', ['m'], { id: 't', updatedAt: 100 })]
+  };
+  const out = Store.reconcileSnapshot(local, remote);
+  assertEqual(out.items.length, 1);
+  assertEqual(out.meals.length, 1, 'a meal arriving alone is adopted');
+  assertEqual(out.toPush.items, ['m']);
+  assertEqual(out.toPush.meals, []);
+});
+
+test('overlayLocal lets an unpersisted in-memory edit beat the stored row', () => {
+  const stored = [
+    Store.createItem('Milk', { id: 'm', stock: 1 }),
+    Store.softDelete(Store.createItem('Gone', { id: 'g' }))
+  ];
+  const inMemory = [Store.createItem('Milk', { id: 'm', stock: 42 })];
+  const out = Store.overlayLocal(stored, inMemory);
+  assertEqual(out.find((r) => r.id === 'm').stock, 42, 'the edit the user can see wins');
+  assertEqual(out.length, 2, 'tombstones only storage knows about are retained');
+});
+
+test('item wire mapping round-trips losslessly', () => {
+  let item = Store.createItem('Milk', {
+    id: 'm', category: 'Dairy', unit: 'gal', tracked: true, stock: 3, lowAt: 2,
+    onList: true, listQty: 4, checked: true, createdAt: 111, updatedAt: 222
+  });
+  item = Store.addPrice(item, 3.5, 'Aldi');
+  item = Store.update(item, { updatedAt: 222 });
+
+  const back = Store.fromItemRow(Store.toItemRow(item, 'house-1'));
+  assertEqual(back, item, 'every synced field survives the round trip');
+  assertEqual(Store.toItemRow(item, 'house-1').household_id, 'house-1');
+});
+
+test('meal wire mapping round-trips, tombstone included', () => {
+  const meal = Store.softDelete(Store.createMeal('Tacos', ['a', 'b'], { id: 't', createdAt: 111 }));
+  const back = Store.fromMealRow(Store.toMealRow(meal, 'house-1'));
+  assertEqual(back, meal);
+});
+
+test('wire mapping preserves a null tombstone rather than inventing one', () => {
+  const row = Store.toItemRow(Store.createItem('Milk', { id: 'm' }), 'h');
+  assertEqual(row.deleted_at, null);
+  assertEqual(Store.fromItemRow(row).deletedAt, null);
+});
+
+test('nextCursor rewinds behind the newest row and holds still on an empty delta', () => {
+  const rows = [{ updated_at: '2026-01-01T00:00:10.000Z' }, { updated_at: '2026-01-01T00:00:04.000Z' }];
+  assertEqual(Store.nextCursor(rows, null), '2026-01-01T00:00:08.000Z', 'max minus the overlap');
+  assertEqual(Store.nextCursor([], 'keep-me'), 'keep-me', 'an empty page must not advance the cursor');
+  assertEqual(Store.nextCursor([{ updated_at: 'junk' }], 'keep-me'), 'keep-me');
+});
+
+test('expiredTombstones selects only tombstones past the cutoff', () => {
+  const live = Store.createItem('A', { id: 'a' });
+  const fresh = Store.createItem('B', { id: 'b', deletedAt: 950 });
+  const old = Store.createItem('C', { id: 'c', deletedAt: 100 });
+  assertEqual(Store.expiredTombstones([live, fresh, old], 500), ['c']);
+});
+
+test('a file merge re-adds a deleted name instead of resurrecting the tombstone', () => {
+  const gone = Store.softDelete(Store.createItem('Milk', { id: 'm' }));
+  // state.items never contains tombstones, so the merge cannot see it to match on.
+  const { items } = Store.mergeImport(Store.live([gone]), [], { items: [{ name: 'Milk', stock: 2 }] });
+  assertEqual(items.length, 1);
+  assert(items[0].id !== 'm', 'a fresh record, not the tombstone brought back to life');
+  assertEqual(items[0].deletedAt, null);
+});
+
+test('replaceLiveWithMeals preserves tombstones a bulk write did not carry', async () => {
+  await new Promise((res) => { const r = indexedDB.deleteDatabase('grocery-tomb'); r.onsuccess = r.onerror = r.onblocked = res; });
+  await DB.init('grocery-tomb');
+
+  const live = Store.createItem('Milk', { id: 'milk' });
+  const dead = Store.softDelete(Store.createItem('Gone', { id: 'gone' }));
+  await DB.replaceAllWithMeals([live, dead], []);
+
+  // A bulk mutation passes state.items, which by design excludes tombstones.
+  await DB.replaceLiveWithMeals([live], []);
+  const all = await DB.getAll();
+  assertEqual(all.length, 2, 'the tombstone survived a write that never mentioned it');
+  assert(all.find((r) => r.id === 'gone').deletedAt, 'still a tombstone');
+  assertEqual(Store.live(all).map((r) => r.id), ['milk']);
+
+  // Restore, by contrast, is meant to wipe everything.
+  await DB.replaceAllWithMeals([live], []);
+  assertEqual((await DB.getAll()).length, 1, 'restore genuinely replaces everything');
+
+  DB.persistent = true; DB._mem = null;
+});
+
+test('replaceLiveWithMeals preserves tombstones in the memory fallback too', async () => {
+  DB.persistent = false;
+  DB._mem = new Map();
+  DB._memSettings = new Map();
+  const live = Store.createItem('Milk', { id: 'milk' });
+  const dead = Store.softDelete(Store.createItem('Gone', { id: 'gone' }));
+  DB._mem.set('milk', live); DB._mem.set('gone', dead);
+
+  await DB.replaceLiveWithMeals([live], []);
+  assertEqual([...DB._mem.keys()].sort(), ['gone', 'milk']);
+
+  DB.persistent = true; DB._mem = null;
+});
+
+/* ── V6: outbox + schema upgrade ── */
+
+async function freshDb(name) {
+  await new Promise((res) => { const r = indexedDB.deleteDatabase(name); r.onsuccess = r.onerror = r.onblocked = res; });
+  await DB.init(name);
+}
+function restoreDb() {
+  DB.persistent = true; DB._mem = null; DB.syncing = false; DB._memOutbox = new Map();
+}
+
+test('outbox stays empty while signed out — a local-only user pays nothing', async () => {
+  await freshDb('grocery-outbox-off');
+  DB.syncing = false;
+  await DB.put(Store.createItem('Milk', { id: 'milk' }));
+  await DB.enqueue('item', 'milk');
+  assertEqual(await DB.outboxCount(), 0, 'nothing is recorded until sync is on');
+  restoreDb();
+});
+
+test('outbox coalesces repeat writes to one entry per record', async () => {
+  await freshDb('grocery-outbox');
+  DB.syncing = true;
+  let it = Store.createItem('Milk', { id: 'milk', stock: 0 });
+  for (let n = 0; n < 5; n++) { it = Store.adjustStock(it, 1); await DB.put(it); }
+  const entries = await DB.outboxAll();
+  assertEqual(entries.length, 1, 'five stepper taps collapse to one dirty key');
+  assertEqual(entries[0].key, 'item:milk');
+  assertEqual((await DB.get('milk')).stock, 5, 'the record itself is current');
+  restoreDb();
+});
+
+test('outboxRemove keeps an entry re-dirtied during the push', async () => {
+  await freshDb('grocery-outbox-race');
+  DB.syncing = true;
+  const it = Store.createItem('Milk', { id: 'milk' });
+  await DB.put(it);
+  const pushed = await DB.outboxAll();          // what a push would send
+
+  // …the user edits again while that request is in flight.
+  await new Promise((r) => setTimeout(r, 5));
+  await DB.put(Store.update(it, { stock: 9 }));
+
+  await DB.outboxRemove(pushed);
+  assertEqual(await DB.outboxCount(), 1, 'the in-flight edit must NOT be cleared');
+  restoreDb();
+});
+
+test('outboxRemove clears entries that did not change', async () => {
+  await freshDb('grocery-outbox-clear');
+  DB.syncing = true;
+  await DB.put(Store.createItem('Milk', { id: 'milk' }));
+  await DB.put(Store.createItem('Eggs', { id: 'eggs' }));
+  const pushed = await DB.outboxAll();
+  assertEqual(pushed.length, 2);
+  await DB.outboxRemove(pushed);
+  assertEqual(await DB.outboxCount(), 0);
+  restoreDb();
+});
+
+test('a delete needs no op-code: the tombstone write dirties the key itself', async () => {
+  await freshDb('grocery-outbox-del');
+  DB.syncing = true;
+  const it = Store.createItem('Milk', { id: 'milk' });
+  await DB.put(it);
+  await DB.outboxRemove(await DB.outboxAll());
+  await DB.put(Store.softDelete(it));
+  const entries = await DB.outboxAll();
+  assertEqual(entries.map((e) => e.key), ['item:milk']);
+  assert((await DB.get('milk')).deletedAt, 'storage holds a tombstone, not a hole');
+  restoreDb();
+});
+
+test('applyPull writes records, meals, cursor and re-push keys atomically', async () => {
+  await freshDb('grocery-apply');
+  DB.syncing = true;
+  const items = [Store.createItem('Milk', { id: 'milk', stock: 4 }), Store.softDelete(Store.createItem('Gone', { id: 'gone' }))];
+  const meals = [Store.createMeal('Tacos', ['milk'], { id: 'meal-1' })];
+  await DB.applyPull({ items, meals, cursor: '2026-01-01T00:00:00.000Z', enqueue: [{ kind: 'item', id: 'milk' }] });
+
+  assertEqual((await DB.getAll()).length, 2, 'tombstones are stored, not dropped');
+  assertEqual(Store.live(await DB.getAll()).map((r) => r.id), ['milk']);
+  assertEqual((await DB.getSetting('meals', [])).length, 1);
+  assertEqual(await DB.getSetting('sync.cursor'), '2026-01-01T00:00:00.000Z');
+  assertEqual((await DB.outboxAll()).map((e) => e.key), ['item:milk'], 'records the local side won are re-queued');
+  restoreDb();
+});
+
+test('purgeTombstones drops only tombstones past the cutoff', async () => {
+  await freshDb('grocery-purge');
+  const live = Store.createItem('Milk', { id: 'milk' });
+  const fresh = Store.createItem('Recent', { id: 'recent', deletedAt: Date.now() - 1000 });
+  const ancient = Store.createItem('Ancient', { id: 'ancient', deletedAt: 1000 });
+  await DB.replaceAllWithMeals([live, fresh, ancient], []);
+
+  const purged = await DB.purgeTombstones(Date.now() - 60000);
+  assertEqual(purged, 1);
+  assertEqual((await DB.getAll()).map((r) => r.id).sort(), ['milk', 'recent']);
+  restoreDb();
+});
+
+test('v1 databases upgrade to v2 without losing data', async () => {
+  const NAME = 'grocery-upgrade';
+  await new Promise((res) => { const r = indexedDB.deleteDatabase(NAME); r.onsuccess = r.onerror = r.onblocked = res; });
+
+  // Build a genuine v1 database: items + settings only, no outbox.
+  await new Promise((resolve, reject) => {
+    const req = indexedDB.open(NAME, 1);
+    req.onupgradeneeded = () => {
+      req.result.createObjectStore('items', { keyPath: 'id' });
+      req.result.createObjectStore('settings');
+    };
+    req.onsuccess = () => {
+      const db = req.result;
+      const tx = db.transaction(['items', 'settings'], 'readwrite');
+      tx.objectStore('items').put({ id: 'milk', name: 'Milk', stock: 3, prices: [] }); // pre-timestamp shape
+      tx.objectStore('settings').put([{ id: 'm1', name: 'Tacos', itemIds: ['milk'] }], 'meals');
+      tx.oncomplete = () => { db.close(); resolve(); };
+      tx.onerror = () => reject(tx.error);
+    };
+    req.onerror = () => reject(req.error);
+  });
+
+  await DB.init(NAME);
+  const all = await DB.getAll();
+  assertEqual(all.length, 1, 'the only copy of real data survived the upgrade');
+  assertEqual(all[0].name, 'Milk');
+  assertEqual(all[0].stock, 3);
+  assertEqual((await DB.getSetting('meals', [])).length, 1, 'meals survived too');
+  assertEqual(await DB.outboxCount(), 0, 'the new outbox store exists and is empty');
+
+  // And the legacy record normalises into a sync-capable shape on load.
+  const [normalised] = Store.normalizeImport(all);
+  assertEqual(normalised.deletedAt, null);
+  assert(typeof normalised.updatedAt === 'number', 'backfilled a clock it never had');
+  restoreDb();
 });

@@ -1,6 +1,8 @@
 /* Data layer: Store = pure state transitions. DB (IndexedDB adapter) is added below in a later task. */
 
 const MAX_PRICE = 100000; // guards against fat-fingered values overflowing the tile
+const CURSOR_OVERLAP_MS = 2000;    // re-fetch window; see Store.nextCursor
+const TOMBSTONE_TTL_MS = 90 * 24 * 60 * 60 * 1000; // 90 days; see Store.expiredTombstones
 
 function newId() {
   return crypto.randomUUID ? crypto.randomUUID() : Math.random().toString(36).slice(2) + Date.now();
@@ -31,6 +33,11 @@ const Store = {
     }
     return [...groups.entries()].sort((a, b) => rank(a[0]) - rank(b[0]) || a[0].localeCompare(b[0]));
   },
+  /* Every field is overridable, including the timestamps and `deletedAt`.
+     That matters for sync: a record arriving from another device has to be
+     reconstructable exactly as it was written there, and a hardcoded
+     `createdAt: now` would silently restamp it and corrupt conflict
+     resolution. Locally-created items simply omit the overrides. */
   createItem(name, opts = {}) {
     const now = Date.now();
     return {
@@ -43,10 +50,11 @@ const Store = {
       unit: opts.unit || '',
       onList: opts.onList ?? false,
       listQty: opts.listQty ?? 1,
-      checked: false,
+      checked: opts.checked ?? false,
       prices: opts.prices ? [...opts.prices] : [],
-      createdAt: now,
-      updatedAt: now
+      createdAt: opts.createdAt ?? now,
+      updatedAt: opts.updatedAt ?? now,
+      deletedAt: opts.deletedAt ?? null
     };
   },
 
@@ -82,8 +90,19 @@ const Store = {
     return 'stocked';
   },
 
+  /* `updatedAt` is the conflict-resolution clock, so it must never go
+     backwards on a record even when the device clock does. Without the
+     Math.max, a phone running ten minutes fast wins every conflict against
+     every other device, permanently and silently — and a phone running slow
+     can never win one. Clamping to at least prev+1 makes it a poor-man's
+     hybrid logical clock: still wall-clock-ish across devices, but monotonic
+     per record. */
   update(item, changes) {
-    return { ...item, ...changes, updatedAt: Date.now() };
+    return { ...item, ...changes, updatedAt: Store.nextStamp(item.updatedAt) };
+  },
+
+  nextStamp(prev) {
+    return Math.max(Date.now(), (prev || 0) + 1);
   },
 
   toggleOnList(item) {
@@ -147,12 +166,35 @@ const Store = {
       name: String(name).trim(),
       itemIds: [...new Set(itemIds)],
       createdAt: opts.createdAt ?? now,
-      updatedAt: now
+      updatedAt: opts.updatedAt ?? now,
+      deletedAt: opts.deletedAt ?? null
     };
   },
 
   updateMeal(meal, changes) {
-    return { ...meal, ...changes, updatedAt: Date.now() };
+    return { ...meal, ...changes, updatedAt: Store.nextStamp(meal.updatedAt) };
+  },
+
+  /* ---- Tombstones ----
+     A delete is a write, not an absence. Hard-deleting a row makes a delete
+     invisible to every other device, which would resurrect the item on the
+     next sync. `deletedAt` is filtered out exactly once, at the boundary
+     (boot and snapshot-apply), so `state.items`/`state.meals` never contain
+     tombstones and no render, lookup, export, or merge path has to know they
+     exist. */
+
+  /* Works for items and meals alike. Clearing the list state matters: a
+     deleted item must not linger on another member's list, and it must not
+     come back checked if it is ever re-created. Meals carry no list state,
+     so those keys are only touched when the record actually has them. */
+  softDelete(record) {
+    const stamp = Store.nextStamp(record.updatedAt);
+    const cleared = 'onList' in record ? { onList: false, checked: false } : {};
+    return { ...record, ...cleared, deletedAt: stamp, updatedAt: stamp };
+  },
+
+  live(records) {
+    return records.filter((r) => !r.deletedAt);
   },
 
   /* Resolves ids to live items in meal order. Ids with no surviving item are
@@ -197,8 +239,13 @@ const Store = {
     });
   },
 
+  /* v3 carries timestamps and emits live records only — a backup is a picture
+     of what you have, not a graveyard. Consequence worth knowing: restoring a
+     backup on one device does not propagate deletes to another, because the
+     tombstones aren't in the file. Restore is already destructive and
+     explicit, so that's the right trade. */
   serialize(items, meals = []) {
-    return JSON.stringify({ version: 2, items, meals }, null, 2);
+    return JSON.stringify({ version: 3, items: Store.live(items), meals: Store.live(meals) }, null, 2);
   },
 
   /* Pantry export (V5): just the tracked items you currently have in stock,
@@ -219,10 +266,11 @@ const Store = {
     return JSON.stringify({ exportedAt: new Date().toISOString().slice(0, 10), pantry }, null, 2);
   },
 
-  /* v1 backups predate meals and are still accepted (meals default to none). */
+  /* v1 backups predate meals, v2 predates tombstones; both are still accepted
+     (the missing fields default in normalizeImport). */
   validateImport(data) {
     if (!data || typeof data !== 'object' || !Array.isArray(data.items)) return false;
-    if (data.version !== 1 && data.version !== 2) return false;
+    if (![1, 2, 3].includes(data.version)) return false;
     const strings = ['name', 'category', 'unit'];
     const numbers = ['stock', 'lowAt', 'listQty'];
     const booleans = ['tracked', 'onList', 'checked'];
@@ -232,8 +280,15 @@ const Store = {
       strings.every((k) => typeof it[k] === 'string') &&
       numbers.every((k) => typeof it[k] === 'number' && Number.isFinite(it[k])) &&
       booleans.every((k) => typeof it[k] === 'boolean') &&
+      Store.validStamp(it.deletedAt) &&
       Store.validPrices(it.prices)
     ) && Store.validMeals(data.meals);
+  },
+
+  /* Absent or null is valid — v1/v2 backups predate tombstones. Present must
+     be a finite number of milliseconds. */
+  validStamp(v) {
+    return v === undefined || v === null || (typeof v === 'number' && Number.isFinite(v));
   },
 
   /* Same uuid-shaped id rule as items — an import must not be able to inject
@@ -244,15 +299,37 @@ const Store = {
     const id = (v) => typeof v === 'string' && /^[\w-]{1,64}$/.test(v);
     return meals.every((m) =>
       m && typeof m === 'object' && id(m.id) && typeof m.name === 'string' &&
+      Store.validStamp(m.deletedAt) &&
       Array.isArray(m.itemIds) && m.itemIds.every(id)
     );
   },
 
   /* Imported meals may reference items the file didn't carry; drop those ids
-     rather than rejecting the whole backup. */
+     rather than rejecting the whole backup. Pruning is only correct here,
+     where the payload is self-contained — never against a live item set that
+     a sync may not have finished filling in. */
   normalizeImportMeals(meals, items) {
     if (!Array.isArray(meals)) return [];
-    return Store.pruneMeals(meals, items);
+    return Store.normalizeMeals(Store.pruneMeals(meals, items));
+  },
+
+  /* Backfills the fields that older records predate. Records written before
+     tombstones existed have no `deletedAt`, and v1 items have no timestamps;
+     both must gain them before they can take part in conflict resolution.
+     Returns the original object untouched when nothing is missing. */
+  normalizeRecord(r) {
+    if (r.createdAt !== undefined && r.updatedAt !== undefined && r.deletedAt !== undefined) return r;
+    const now = Date.now();
+    return {
+      ...r,
+      createdAt: r.createdAt ?? now,
+      updatedAt: r.updatedAt ?? now,
+      deletedAt: r.deletedAt ?? null
+    };
+  },
+
+  normalizeMeals(meals) {
+    return (Array.isArray(meals) ? meals : []).map(Store.normalizeRecord);
   },
 
   /* Absent prices is valid: v1 backups predate price history (normalizeImport
@@ -269,7 +346,7 @@ const Store = {
   },
 
   normalizeImport(items) {
-    return items.map((it) => (it.prices ? it : { ...it, prices: [] }));
+    return items.map((it) => Store.normalizeRecord(it.prices ? it : { ...it, prices: [] }));
   },
 
   /* ---- Additive merge import (V4) ----
@@ -414,6 +491,150 @@ const Store = {
     const meals = Store.mergeMeals(existingMeals, data.meals, items, idMap);
     return { items: Store.normalizeImport(items), meals, stats };
   },
+
+  /* ---- Sync reconciliation (V6) ----
+     Every decision about what two devices' copies of a record collapse into
+     lives here, as pure functions over plain objects — no network, no
+     IndexedDB, no clock beyond what's on the records. That's deliberate: this
+     is the code that can silently destroy the household's data, so it has to
+     be exhaustively testable in the browser harness with no fixtures. */
+
+  /* Whole-record last-write-wins on `updatedAt`, with three exceptions:
+     - `prices` always unions (append-only observation set; a merge must never
+       drop a recorded price).
+     - `deletedAt` takes the earliest non-null and never returns to null —
+       a delete beats a concurrent edit. A resurrected item is invisible and
+       silently wrong; a lost edit is visible and one tap to redo.
+     - `createdAt` takes the earliest, so the record's own history stays honest.
+     Ties go to local: it's a coin flip either way, and preferring local means
+     one fewer write. */
+  reconcileRecord(local, remote) {
+    if (!remote) return local || null;
+    if (!local) return remote;
+    const winner = (remote.updatedAt || 0) > (local.updatedAt || 0) ? remote : local;
+    const merged = { ...winner };
+
+    if (Array.isArray(local.prices) || Array.isArray(remote.prices)) {
+      merged.prices = Store.mergePrices(local.prices, remote.prices);
+    }
+    const created = [local.createdAt, remote.createdAt].filter((n) => typeof n === 'number');
+    if (created.length) merged.createdAt = Math.min(...created);
+    const deleted = [local.deletedAt, remote.deletedAt].filter((n) => typeof n === 'number');
+    merged.deletedAt = deleted.length ? Math.min(...deleted) : null;
+
+    return merged;
+  },
+
+  /* Order-independent structural equality. Used only to decide whether a
+     reconciled record still differs from what the server sent — a false
+     positive costs one redundant (idempotent) upsert, a false negative leaves
+     two devices permanently disagreeing, so it errs toward pushing. */
+  sameRecord(a, b) {
+    if (!a || !b) return a === b;
+    const canon = (r) => JSON.stringify(Object.keys(r).sort().map((k) => [k, r[k]]));
+    return canon(a) === canon(b);
+  },
+
+  /* Folds a delta from the server into the full local set. Returns the merged
+     records plus the ids whose merged value differs from the server's copy —
+     those MUST be pushed back or the two sides never converge. `localAll`
+     includes tombstones; filter with Store.live only at the render boundary. */
+  reconcileRecords(localAll, remoteDelta) {
+    const byId = new Map(localAll.map((r) => [r.id, r]));
+    const toPush = [];
+    for (const remote of Array.isArray(remoteDelta) ? remoteDelta : []) {
+      if (!remote || typeof remote !== 'object' || !remote.id) continue;
+      const merged = Store.reconcileRecord(byId.get(remote.id) || null, remote);
+      byId.set(remote.id, merged);
+      if (!Store.sameRecord(merged, remote)) toPush.push(merged.id);
+    }
+    return { records: [...byId.values()], toPush };
+  },
+
+  reconcileSnapshot(local, remote) {
+    const i = Store.reconcileRecords(local.items || [], remote.items || []);
+    const m = Store.reconcileRecords(local.meals || [], remote.meals || []);
+    return { items: i.records, meals: m.records, toPush: { items: i.toPush, meals: m.toPush } };
+  },
+
+  /* `commit()` mutates state, renders, and only THEN awaits the write. A pull
+     that reads storage inside that gap would see the pre-edit row and let the
+     server overwrite an edit the user can already see on screen. Overlaying
+     in-memory records on top of stored ones closes that window: tombstones
+     come from storage, anything live in RAM wins. */
+  overlayLocal(stored, inMemory) {
+    const byId = new Map(stored.map((r) => [r.id, r]));
+    for (const r of inMemory) byId.set(r.id, r);
+    return [...byId.values()];
+  },
+
+  /* ---- Wire mapping ----
+     Postgres gets snake_case columns; the app keeps its camelCase records.
+     `client_*` are the app's own Date.now() stamps and drive conflict
+     resolution; the server's own `updated_at` is never written by the client
+     and is used only as the delta cursor. */
+
+  toItemRow(item, householdId) {
+    return {
+      id: item.id, household_id: householdId,
+      name: item.name, category: item.category, unit: item.unit || '',
+      tracked: !!item.tracked, stock: item.stock, low_at: item.lowAt,
+      on_list: !!item.onList, list_qty: item.listQty, checked: !!item.checked,
+      prices: item.prices || [],
+      client_created_at: item.createdAt, client_updated_at: item.updatedAt,
+      deleted_at: item.deletedAt ?? null
+    };
+  },
+
+  fromItemRow(row) {
+    return Store.createItem(row.name, {
+      id: row.id, category: row.category, unit: row.unit,
+      tracked: row.tracked, stock: row.stock, lowAt: row.low_at,
+      onList: row.on_list, listQty: row.list_qty, checked: row.checked,
+      prices: row.prices || [],
+      createdAt: row.client_created_at, updatedAt: row.client_updated_at,
+      deletedAt: row.deleted_at ?? null
+    });
+  },
+
+  toMealRow(meal, householdId) {
+    return {
+      id: meal.id, household_id: householdId, name: meal.name,
+      item_ids: meal.itemIds || [],
+      client_created_at: meal.createdAt, client_updated_at: meal.updatedAt,
+      deleted_at: meal.deletedAt ?? null
+    };
+  },
+
+  fromMealRow(row) {
+    return Store.createMeal(row.name, row.item_ids || [], {
+      id: row.id,
+      createdAt: row.client_created_at, updatedAt: row.client_updated_at,
+      deletedAt: row.deleted_at ?? null
+    });
+  },
+
+  /* Rewinds the cursor a couple of seconds behind the newest row seen.
+     Postgres transactions do not necessarily commit in `updated_at` order, so
+     a cursor set to the exact maximum can step over a row that committed
+     late. The overlap re-fetches a handful of rows; reconciliation is
+     idempotent, so replaying them costs nothing. Empty delta → don't move. */
+  nextCursor(rows, prev = null) {
+    let max = null;
+    for (const r of rows || []) {
+      const t = Date.parse(r && r.updated_at);
+      if (Number.isFinite(t) && (max === null || t > max)) max = t;
+    }
+    if (max === null) return prev;
+    return new Date(max - CURSOR_OVERLAP_MS).toISOString();
+  },
+
+  /* Tombstones are kept long enough that a device offline for a normal
+     stretch still learns about the delete, then hard-deleted locally. A
+     device offline longer than this can resurrect what it never saw removed. */
+  expiredTombstones(records, cutoff) {
+    return records.filter((r) => typeof r.deletedAt === 'number' && r.deletedAt < cutoff).map((r) => r.id);
+  },
 };
 
 /* IndexedDB adapter. Falls back to in-memory Map when IndexedDB is unavailable. */
@@ -421,21 +642,42 @@ const DB = {
   _db: null,
   _mem: null,
   _memSettings: new Map(), // mirrors the `settings` store when IndexedDB is unavailable
+  _memOutbox: new Map(),   // mirrors the `outbox` store in the same situation
   persistent: true,
+  blocked: false,          // another tab is holding an older schema open
+  /* Set by the sync layer once a session and a household exist. While false,
+     nothing is ever enqueued, so a signed-out app pays no cost at all. */
+  syncing: false,
 
+  /* v2 adds the `outbox` store. Every store is created defensively rather
+     than assumed absent, so the upgrade is safe from any prior version and
+     safe to re-run.
+
+     `onblocked` is not optional now that the version can change: another tab
+     still holding v1 blocks the upgrade, and without this handler `init()`
+     simply never settles and the app boots to a blank screen. `onversionchange`
+     is the mirror image — it lets THIS tab get out of the way when a newer
+     one wants to upgrade, instead of being the tab that blocks someone else. */
   init(name = 'grocery') {
     return new Promise((resolve) => {
       let req;
       try {
-        req = indexedDB.open(name, 1);
+        req = indexedDB.open(name, 2);
       } catch (e) {
         DB.persistent = false; DB._mem = new Map(); resolve(); return;
       }
       req.onupgradeneeded = () => {
-        req.result.createObjectStore('items', { keyPath: 'id' });
-        req.result.createObjectStore('settings');
+        const db = req.result;
+        if (!db.objectStoreNames.contains('items')) db.createObjectStore('items', { keyPath: 'id' });
+        if (!db.objectStoreNames.contains('settings')) db.createObjectStore('settings');
+        if (!db.objectStoreNames.contains('outbox')) db.createObjectStore('outbox', { keyPath: 'key' });
       };
-      req.onsuccess = () => { DB._db = req.result; resolve(); };
+      req.onblocked = () => { DB.blocked = true; };
+      req.onsuccess = () => {
+        DB._db = req.result;
+        DB._db.onversionchange = () => { DB._db.close(); DB.persistent = false; DB._mem = new Map(); };
+        resolve();
+      };
       req.onerror = () => { DB.persistent = false; DB._mem = new Map(); resolve(); };
     });
   },
@@ -468,14 +710,116 @@ const DB = {
     return DB._tx('readonly', (store) => store.getAll());
   },
 
+  async get(id) {
+    if (!DB.persistent) return DB._mem.get(id);
+    return DB._tx('readonly', (store) => store.get(id));
+  },
+
+  /* Writes the record and marks it dirty in ONE transaction. Splitting these
+     into two would lose the change from the outbox forever if the tab died in
+     between, while the edit sat happily in local storage — a divergence no
+     later sync could ever detect or repair. */
   async put(item) {
-    if (!DB.persistent) { DB._mem.set(item.id, item); return; }
-    await DB._tx('readwrite', (store) => store.put(item));
+    if (!DB.persistent) {
+      DB._mem.set(item.id, item);
+      if (DB.syncing) DB._memOutbox.set(`item:${item.id}`, DB._outboxEntry('item', item.id));
+      return;
+    }
+    if (!DB.syncing) { await DB._tx('readwrite', (store) => store.put(item)); return; }
+    await new Promise((resolve, reject) => {
+      const tx = DB._db.transaction(['items', 'outbox'], 'readwrite');
+      tx.objectStore('items').put(item);
+      tx.objectStore('outbox').put(DB._outboxEntry('item', item.id));
+      tx.oncomplete = resolve;
+      tx.onerror = () => reject(tx.error);
+      tx.onabort = () => reject(tx.error);
+    });
   },
 
   async delete(id) {
     if (!DB.persistent) { DB._mem.delete(id); return; }
     await DB._tx('readwrite', (store) => store.delete(id));
+  },
+
+  /* ---- Outbox ----
+     A set of dirty keys, not a log of operations. Push reads the CURRENT
+     record for each key, which makes coalescing free (five taps on a stepper
+     collapse to one entry), makes ordering irrelevant, and makes replay
+     idempotent. Because deletes are tombstones — ordinary writes — there is no
+     delete op-code and no special replay path.
+
+     `queuedAt` exists so a successful push can remove only the entries it
+     actually sent: an edit made while the request was in flight bumps
+     queuedAt, and must survive rather than being cleared with the rest. */
+
+  _outboxEntry(kind, id) {
+    return { key: `${kind}:${id}`, kind, id, queuedAt: Date.now() };
+  },
+
+  async enqueue(kind, id) {
+    if (!DB.syncing) return;
+    const entry = DB._outboxEntry(kind, id);
+    if (!DB.persistent) { DB._memOutbox.set(entry.key, entry); return; }
+    await DB._tx('readwrite', (s) => s.put(entry), 'outbox');
+  },
+
+  /* One transaction for a whole batch. A bulk write (restore, trip, merge)
+     can dirty hundreds of records; enqueueing them one at a time would be
+     hundreds of transactions. */
+  async enqueueMany(entries) {
+    if (!DB.syncing || !entries.length) return;
+    if (!DB.persistent) {
+      for (const e of entries) DB._memOutbox.set(`${e.kind}:${e.id}`, DB._outboxEntry(e.kind, e.id));
+      return;
+    }
+    await DB._tx('readwrite', (s) => entries.forEach((e) => s.put(DB._outboxEntry(e.kind, e.id))), 'outbox');
+  },
+
+  async outboxAll() {
+    if (!DB.persistent) return [...DB._memOutbox.values()];
+    return DB._tx('readonly', (s) => s.getAll(), 'outbox');
+  },
+
+  async outboxCount() {
+    return (await DB.outboxAll()).length;
+  },
+
+  /* Removes only entries whose queuedAt still matches what was pushed. Never
+     clear() — that is the classic outbox bug, and it silently drops every
+     edit made during the round trip. */
+  async outboxRemove(entries) {
+    if (!DB.persistent) {
+      for (const e of entries) {
+        const cur = DB._memOutbox.get(e.key);
+        if (cur && cur.queuedAt === e.queuedAt) DB._memOutbox.delete(e.key);
+      }
+      return;
+    }
+    await new Promise((resolve, reject) => {
+      const tx = DB._db.transaction('outbox', 'readwrite');
+      const store = tx.objectStore('outbox');
+      for (const e of entries) {
+        const req = store.get(e.key);
+        req.onsuccess = () => {
+          const cur = req.result;
+          if (cur && cur.queuedAt === e.queuedAt) store.delete(e.key);
+        };
+      }
+      tx.oncomplete = resolve;
+      tx.onerror = () => reject(tx.error);
+      tx.onabort = () => reject(tx.error);
+    });
+  },
+
+  /* Hard-deletes tombstones old enough that every device has surely seen the
+     delete. Local only — purging server-side would create a resurrection
+     window for anyone offline longer than the retention period. */
+  async purgeTombstones(cutoff = Date.now() - TOMBSTONE_TTL_MS) {
+    const ids = Store.expiredTombstones(await DB.getAll(), cutoff);
+    if (!ids.length) return 0;
+    if (!DB.persistent) { ids.forEach((id) => DB._mem.delete(id)); return ids.length; }
+    await DB._tx('readwrite', (store) => ids.forEach((id) => store.delete(id)));
+    return ids.length;
   },
 
   async replaceAll(items) {
@@ -498,6 +842,73 @@ const DB = {
       itemStore.clear();
       items.forEach((i) => itemStore.put(i));
       tx.objectStore('settings').put(meals, 'meals');
+      tx.oncomplete = resolve;
+      tx.onerror = () => reject(tx.error);
+      tx.onabort = () => reject(tx.error);
+    });
+  },
+
+  /* Replaces the LIVE working set while preserving tombstones already in
+     storage. Bulk mutations (completing a trip, a meal preflight, a file
+     merge) must use this rather than replaceAllWithMeals: the caller passes
+     `state.items`, which by design never contains tombstones, so a plain
+     clear-and-rewrite would silently erase every delete the household has
+     not yet synced. Restore keeps using replaceAllWithMeals, where wiping
+     everything is the whole point.
+     Reading inside the same transaction is what makes this safe — fetching
+     the tombstones beforehand would race with any concurrent write. */
+  async replaceLiveWithMeals(items, meals) {
+    if (!DB.persistent) {
+      const kept = [...DB._mem.values()].filter((r) => r.deletedAt);
+      DB._mem = new Map([...kept, ...items].map((i) => [i.id, i]));
+      DB._memSettings.set('meals', meals);
+      return;
+    }
+    await new Promise((resolve, reject) => {
+      const tx = DB._db.transaction(['items', 'settings'], 'readwrite');
+      const itemStore = tx.objectStore('items');
+      const existing = itemStore.getAll();
+      existing.onsuccess = () => {
+        const tombstones = existing.result.filter((r) => r.deletedAt);
+        itemStore.clear();
+        // tombstones first, so a live record always wins a same-id collision
+        [...tombstones, ...items].forEach((i) => itemStore.put(i));
+      };
+      tx.objectStore('settings').put(meals, 'meals');
+      tx.oncomplete = resolve;
+      tx.onerror = () => reject(tx.error);
+      tx.onabort = () => reject(tx.error);
+    });
+  },
+
+  /* Applies a reconciled pull: the merged records (tombstones included), the
+     new cursor, and the keys that still need pushing back — all in ONE
+     transaction across all three stores.
+
+     Atomicity is the whole point. If the cursor were committed separately and
+     the process died in between, the next pull would start after rows that
+     were never applied, and those rows would never be fetched again — a
+     permanent, silent hole in the local copy. */
+  async applyPull({ items, meals, cursor, enqueue = [] }) {
+    if (!DB.persistent) {
+      if (items) DB._mem = new Map(items.map((i) => [i.id, i]));
+      if (meals) DB._memSettings.set('meals', meals);
+      if (cursor !== undefined) DB._memSettings.set('sync.cursor', cursor);
+      for (const e of enqueue) DB._memOutbox.set(`${e.kind}:${e.id}`, DB._outboxEntry(e.kind, e.id));
+      return;
+    }
+    await new Promise((resolve, reject) => {
+      const tx = DB._db.transaction(['items', 'settings', 'outbox'], 'readwrite');
+      if (items) {
+        const itemStore = tx.objectStore('items');
+        itemStore.clear();
+        items.forEach((i) => itemStore.put(i));
+      }
+      const settings = tx.objectStore('settings');
+      if (meals) settings.put(meals, 'meals');
+      if (cursor !== undefined) settings.put(cursor, 'sync.cursor');
+      const outbox = tx.objectStore('outbox');
+      for (const e of enqueue) outbox.put(DB._outboxEntry(e.kind, e.id));
       tx.oncomplete = resolve;
       tx.onerror = () => reject(tx.error);
       tx.onabort = () => reject(tx.error);

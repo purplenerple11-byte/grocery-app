@@ -250,6 +250,9 @@ button { font-family: var(--sans); cursor: pointer; }
 dialog {
   background: var(--surface-2); color: var(--ink); border: 1px solid var(--hairline);
   border-radius: 16px; padding: 20px; width: min(90vw, 360px); margin: auto;
+  /* Settings has grown past a small phone's viewport; without a cap the
+     dialog overflows and the last controls become unreachable. */
+  max-height: 85vh; overflow-y: auto;
 }
 dialog::backdrop { background: rgba(0, 0, 0, .55); }
 dialog h3 { font-size: 20px; margin-bottom: 12px; }

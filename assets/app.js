@@ -56,16 +56,60 @@ async function commit(item, { deferRender = false } = {}) {
   }
 }
 
+/* A delete is a write, not an erasure. The record stays in storage as a
+   tombstone so the removal can propagate to other devices, while `state` —
+   which never holds tombstones — simply drops it.
+
+   Meals are deliberately NOT pruned here any more. Pruning rewrote every meal
+   against the local item set and persisted the result; once items can arrive
+   from elsewhere, that turns a not-yet-synced item into permanent meal damage.
+   Nothing needs the prune: mealItems, mealSummary, and addMealToList all
+   ignore ids with no surviving item. */
 async function removeItems(ids) {
   const gone = new Set(ids);
+  const tombstones = state.items.filter((x) => gone.has(x.id)).map(Store.softDelete);
   state.items = state.items.filter((x) => !gone.has(x.id));
-  const pruned = Store.pruneMeals(state.meals, state.items);
-  const mealsChanged = pruned.some((m, i) => m !== state.meals[i]);
-  state.meals = pruned;
   cancelScheduledRender();
   render();
-  try { for (const id of ids) await DB.delete(id); } catch (e) { showBanner('Save failed — changes may not persist.'); }
-  if (mealsChanged) await saveMeals();
+  try {
+    for (const t of tombstones) await DB.put(t);
+  } catch (e) {
+    showBanner('Save failed — changes may not persist.');
+  }
+}
+
+/* Bulk counterpart to commit(). Every wholesale mutation routes through here
+   instead of reaching for DB directly, so there is exactly one place where a
+   bulk change can be observed — which is what lets sync hook in later without
+   hunting down four scattered call sites.
+
+   Items that vanish from the working set (a one-off bought on a trip, say) are
+   tombstoned rather than dropped, for the same reason removeItems tombstones.
+   `replace: true` is the restore path: it genuinely wipes everything, including
+   tombstones, because the backup is being declared the new truth. */
+async function commitAll(items, meals, { replace = false } = {}) {
+  const vanished = new Map(state.items.map((i) => [i.id, i]));
+  for (const it of items) vanished.delete(it.id);
+  const tombstones = replace ? [] : [...vanished.values()].map(Store.softDelete);
+
+  state.items = items;
+  if (meals) state.meals = meals;
+  cancelScheduledRender();
+  render();
+
+  try {
+    const written = [...items, ...tombstones];
+    if (replace) await DB.replaceAllWithMeals(items, state.meals);
+    else await DB.replaceLiveWithMeals(written, state.meals);
+    // Bulk writes bypass DB.put, so they have to mark their own records dirty.
+    await DB.enqueueMany([
+      ...written.map((i) => ({ kind: 'item', id: i.id })),
+      ...state.meals.map((m) => ({ kind: 'meal', id: m.id }))
+    ]);
+    return true;
+  } catch (e) {
+    return false;
+  }
 }
 
 function renderList() {
@@ -155,11 +199,16 @@ function renderMeals() {
   }).join('');
 }
 
-function render() { renderList(); renderSheet(); renderMeals(); }
+function render() { renderList(); renderSheet(); renderMeals(); keepEditing(); }
 
-async function saveMeals() {
+/* Meals persist locally as one blob but sync as individual rows, so the blob
+   write is paired with a per-meal outbox entry. `ids` narrows that to the
+   meals that actually changed; omitting it marks them all, which is
+   harmless — the outbox coalesces and the upsert is idempotent. */
+async function saveMeals(ids) {
   try {
     await DB.putSetting('meals', state.meals);
+    for (const id of ids || state.meals.map((m) => m.id)) await DB.enqueue('meal', id);
   } catch (e) {
     showBanner('Save failed — meals may not persist.');
   }
@@ -279,10 +328,10 @@ document.getElementById('trip-form').addEventListener('submit', async (e) => {
     const value = Store.normalizePrice(raw);
     if (value !== null) prices[input.dataset.priceFor] = value;
   }
-  state.items = Store.completeTrip(state.items, { store: e.target.elements.store.value, prices });
-  render();
+  const restocked = Store.completeTrip(state.items, { store: e.target.elements.store.value, prices });
   document.getElementById('trip-dialog').close();
-  try { await DB.replaceAll(state.items); } catch (err) { showBanner('Save failed — changes may not persist.'); }
+  // completeTrip drops bought one-offs entirely; commitAll tombstones them.
+  if (!await commitAll(restocked)) showBanner('Save failed — changes may not persist.');
 });
 
 /* sheet open/close: tap the bar, or swipe it up/down */
@@ -327,14 +376,22 @@ document.getElementById('inv-grid').addEventListener('click', (e) => {
     const tile = actionEl.closest('.tile');
     document.querySelectorAll('.tile.editing').forEach((t) => t !== tile && t.classList.remove('editing'));
     tile.classList.toggle('editing');
+    editingTileId = tile.classList.contains('editing') ? item.id : null;
     return;
   }
   if (action === 'toggle') commit(Store.toggleOnList(item));
 });
 
+/* Which tile has its stepper open. render() rebuilds the grid wholesale, so
+   without this the open stepper closes under the user's finger on any render
+   they didn't cause — today only a rare race, but every sync pull triggers a
+   render, so it has to survive one. */
+let editingTileId = null;
+
 /* re-apply .editing after render() rebuilds the grid */
 function keepEditing(id) {
-  const tile = document.querySelector(`.tile[data-id="${id}"]`);
+  if (id) editingTileId = id;
+  const tile = document.querySelector(`.tile[data-id="${editingTileId}"]`);
   if (tile) tile.classList.add('editing');
 }
 
@@ -759,11 +816,11 @@ document.getElementById('preflight-form').addEventListener('submit', async (e) =
   // 2. Close dialog, update state, render
   document.getElementById('preflight-dialog').close();
   setDrawer(false);
-  state.items = state.items.map(it =>
+  const withAdded = state.items.map(it =>
     selectedIds.includes(it.id) ? Store.update(it, { onList: true, checked: false }) : it
   );
-  render();
-  DB.replaceAll(state.items).catch(() => showBanner('Save failed — changes may not persist.'));
+  // Deliberately not awaited — the fly animation below must start this frame.
+  commitAll(withAdded).then((ok) => { if (!ok) showBanner('Save failed — changes may not persist.'); });
   showBanner(`Added ${selectedIds.length} item(s) from ${document.getElementById('preflight-dialog-title').textContent}.`);
 
   // 3. Mark destination rows as pending, snapshot destination rects
@@ -928,15 +985,11 @@ document.getElementById('restore-file').addEventListener('change', async (e) => 
   if (!confirm('Restore replaces everything currently in the app with this backup. Continue?')) return;
   const items = Store.normalizeImport(data.items); // v1 backups predate price history
   const meals = Store.normalizeImportMeals(data.meals, items); // v1 backups predate meals
-  try {
-    await DB.replaceAllWithMeals(items, meals); // atomic: both stores or neither
-  } catch (err) {
+  // replace: the backup becomes the whole truth, tombstones included.
+  if (!await commitAll(items, meals, { replace: true })) {
     showBanner('Restore failed — data unchanged.');
     return;
   }
-  state.items = items;
-  state.meals = meals;
-  render();
   document.getElementById('settings-dialog').close();
 });
 
@@ -950,15 +1003,11 @@ document.getElementById('merge-file').addEventListener('change', async (e) => {
   try { data = JSON.parse(await file.text()); } catch { showBanner('Add failed: not valid JSON.'); return; }
   if (!Store.validateMergeImport(data)) { showBanner('Add failed: expected an object with an items list.'); return; }
   const { items, meals, stats } = Store.mergeImport(state.items, state.meals, data);
-  try {
-    await DB.replaceAllWithMeals(items, meals); // atomic: both stores or neither
-  } catch (err) {
+  // A merge never deletes, so tombstones must survive it.
+  if (!await commitAll(items, meals)) {
     showBanner('Add failed — data unchanged.');
     return;
   }
-  state.items = items;
-  state.meals = meals;
-  render();
   document.getElementById('settings-dialog').close();
   const parts = [`Added ${stats.added}`, `updated ${stats.updated}`];
   if (stats.skipped) parts.push(`skipped ${stats.skipped}`);
@@ -966,12 +1015,33 @@ document.getElementById('merge-file').addEventListener('change', async (e) => {
 });
 
 async function boot() {
-  await DB.init();
+  /* A second tab holding the previous schema blocks the upgrade, and the open
+     request then never settles. Racing it means a blocked upgrade shows an
+     actionable message instead of an indefinitely blank screen. */
+  const timedOut = Symbol('timeout');
+  const outcome = await Promise.race([
+    DB.init(),
+    new Promise((r) => setTimeout(() => r(timedOut), 3000))
+  ]);
+  if (outcome === timedOut) {
+    showBanner(DB.blocked
+      ? 'Close this app\'s other tabs and reload to finish updating.'
+      : 'Storage is taking too long to open. Reload to try again.');
+    return;
+  }
   if (!DB.persistent) showBanner("Changes won't be saved in this session.");
-  // Items stored before price history existed have no prices array.
-  state.items = Store.normalizeImport(await DB.getAll());
+  await DB.purgeTombstones().catch(() => {});
+  // Items stored before price history existed have no prices array; those
+  // written before tombstones have no deletedAt. normalizeImport backfills
+  // both. Store.live is the single boundary where tombstones are dropped —
+  // past this point `state` never contains one.
+  const stored = Store.normalizeImport(await DB.getAll());
+  state.items = Store.live(stored);
   // Meals arrived in V3; older databases simply have no `meals` setting.
-  state.meals = Store.pruneMeals(await DB.getSetting('meals', []), state.items);
+  // NOT pruned against state.items: pruning here rewrote and persisted every
+  // meal based on whichever items happened to be present, so an item that a
+  // sync had not yet delivered would be permanently stripped from its meals.
+  state.meals = Store.live(Store.normalizeMeals(await DB.getSetting('meals', [])));
   render();
   if ('serviceWorker' in navigator) navigator.serviceWorker.register('./sw.js');
 }
