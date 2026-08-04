@@ -372,24 +372,156 @@ document.getElementById('trip-form').addEventListener('submit', async (e) => {
   if (typeof Sync !== 'undefined' && Sync.enabled) Sync.recordTrip();
 });
 
-/* sheet open/close: tap the bar, or swipe it up/down */
+/* ── Physical 1:1 vertical drag & fling for the inventory sheet ── */
 (() => {
   const sheet = document.getElementById('sheet');
   const bar = document.getElementById('sheet-bar');
-  let startY = null, dragged = false;
-  bar.addEventListener('pointerdown', (e) => { startY = e.clientY; dragged = false; });
-  bar.addEventListener('pointermove', (e) => {
-    if (startY === null) return;
+  const content = document.getElementById('sheet-content');
+
+  let active = false;
+  let startY = 0;
+  let startHeight = 0;
+  let currentHeight = 0;
+  let isDragging = false;
+  let pointerId = null;
+
+  /* velocity: ring buffer of recent pointer Y positions */
+  const vBuf = [];
+  const V_WINDOW = 80;
+  function vTrack(y) {
+    const t = performance.now();
+    vBuf.push({ y, t });
+    while (vBuf.length > 1 && t - vBuf[0].t > V_WINDOW) vBuf.shift();
+  }
+  function vGet() {
+    if (vBuf.length < 2) return 0;
+    const a = vBuf[0], b = vBuf[vBuf.length - 1];
+    const dt = b.t - a.t;
+    return dt > 0 ? (b.y - a.y) / dt : 0;
+  }
+
+  function getClosedHeight() {
+    return 64; // matching CSS #sheet height when closed
+  }
+  function getOpenHeight() {
+    return Math.round(window.innerHeight * 0.86); // matching CSS #sheet.open height: 86vh
+  }
+
+  function onPointerDown(e) {
+    if (e.button !== 0) return;
+    if (e.target.closest('button, input, select')) return;
+
+    active = true;
+    isDragging = false;
+    pointerId = e.pointerId;
+    startY = e.clientY;
+    startHeight = sheet.offsetHeight;
+    currentHeight = startHeight;
+    vBuf.length = 0;
+    vTrack(e.clientY);
+
+    sheet.style.transition = 'none';
+  }
+
+  function onPointerMove(e) {
+    if (!active || (pointerId !== null && e.pointerId !== pointerId)) return;
     const dy = e.clientY - startY;
-    if (dy < -30) { sheet.classList.add('open'); startY = null; dragged = true; renderSheet(); }
-    else if (dy > 30) { sheet.classList.remove('open'); startY = null; dragged = true; renderSheet(); }
+
+    if (!isDragging && Math.abs(dy) > 4) {
+      isDragging = true;
+      content.inert = false;
+    }
+
+    if (!isDragging) return;
+
+    vTrack(e.clientY);
+
+    const closedH = getClosedHeight();
+    const openH = getOpenHeight();
+    let rawH = startHeight - dy;
+
+    // Rubber banding past bounds
+    if (rawH > openH) {
+      const over = rawH - openH;
+      rawH = openH + over * 0.3;
+    } else if (rawH < closedH) {
+      const under = closedH - rawH;
+      rawH = closedH - under * 0.3;
+    }
+
+    currentHeight = rawH;
+    sheet.style.height = `${currentHeight}px`;
+  }
+
+  function onPointerEnd(e) {
+    if (!active || (pointerId !== null && e.pointerId !== pointerId)) return;
+    active = false;
+    pointerId = null;
+
+    if (!isDragging) {
+      // Tap gesture on sheet header bar: toggle state
+      const isOpen = sheet.classList.contains('open');
+      setSheetState(!isOpen, true);
+      return;
+    }
+
+    const closedH = getClosedHeight();
+    const openH = getOpenHeight();
+    const vy = vGet(); // positive = moving down, negative = moving up
+    const FLING_VEL = 0.35; // px/ms threshold for flick/fling
+
+    let shouldOpen = false;
+
+    if (vy < -FLING_VEL) {
+      shouldOpen = true;
+    } else if (vy > FLING_VEL) {
+      shouldOpen = false;
+    } else {
+      const midPoint = closedH + (openH - closedH) * 0.45;
+      shouldOpen = currentHeight > midPoint;
+    }
+
+    setSheetState(shouldOpen, true);
+  }
+
+  function setSheetState(open, animate = false) {
+    const targetH = open ? getOpenHeight() : getClosedHeight();
+
+    if (animate) {
+      sheet.style.transition = 'height 0.32s cubic-bezier(.25, 1, .5, 1)';
+      sheet.style.height = `${targetH}px`;
+
+      let animationDone = false;
+      const finish = () => {
+        if (animationDone) return;
+        animationDone = true;
+        sheet.removeEventListener('transitionend', finish);
+        sheet.style.transition = '';
+        sheet.style.height = '';
+        sheet.classList.toggle('open', open);
+        renderSheet();
+      };
+
+      sheet.addEventListener('transitionend', finish);
+      setTimeout(finish, 350);
+    } else {
+      sheet.style.transition = '';
+      sheet.style.height = '';
+      sheet.classList.toggle('open', open);
+      renderSheet();
+    }
+  }
+
+  bar.addEventListener('pointerdown', onPointerDown);
+  content.addEventListener('pointerdown', (e) => {
+    if (sheet.classList.contains('open') && content.scrollTop <= 0) {
+      onPointerDown(e);
+    }
   });
-  ['pointerup', 'pointercancel'].forEach((ev) => bar.addEventListener(ev, () => { startY = null; }));
-  bar.addEventListener('click', () => {
-    if (dragged) { dragged = false; return; } // a swipe already handled this gesture
-    sheet.classList.toggle('open');
-    renderSheet();
-  });
+
+  window.addEventListener('pointermove', onPointerMove);
+  window.addEventListener('pointerup', onPointerEnd);
+  window.addEventListener('pointercancel', onPointerEnd);
 })();
 
 document.getElementById('inv-grid').addEventListener('click', (e) => {
