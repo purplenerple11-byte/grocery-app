@@ -51,8 +51,9 @@ async function commit(item, { deferRender = false } = {}) {
   
   try {
     await DB.put(item);
+    scheduleSync();
   } catch (e) {
-    try { await DB.put(item); } // spec: retry once, then surface
+    try { await DB.put(item); scheduleSync(); } // spec: retry once, then surface
     catch (e2) { showBanner('Save failed — changes may not persist.'); }
   }
 }
@@ -74,6 +75,7 @@ async function removeItems(ids) {
   render();
   try {
     for (const t of tombstones) await DB.put(t);
+    scheduleSync();
   } catch (e) {
     showBanner('Save failed — changes may not persist.');
   }
@@ -107,6 +109,7 @@ async function commitAll(items, meals, { replace = false } = {}) {
       ...written.map((i) => ({ kind: 'item', id: i.id })),
       ...state.meals.map((m) => ({ kind: 'meal', id: m.id }))
     ]);
+    scheduleSync();
     return true;
   } catch (e) {
     return false;
@@ -206,10 +209,20 @@ function render() { renderList(); renderSheet(); renderMeals(); keepEditing(); }
    write is paired with a per-meal outbox entry. `ids` narrows that to the
    meals that actually changed; omitting it marks them all, which is
    harmless — the outbox coalesces and the upsert is idempotent. */
-async function saveMeals(ids) {
+async function saveMeals(ids, tombstone = null) {
   try {
-    await DB.putSetting('meals', state.meals);
-    for (const id of ids || state.meals.map((m) => m.id)) await DB.enqueue('meal', id);
+    // `state.meals` holds only live meals, but the stored blob has to keep
+    // tombstones or a deleted meal is simply absent — and absence is exactly
+    // what a pull would treat as "the other device has one I'm missing", so
+    // the meal would come straight back.
+    const stored = await DB.getSetting('meals', []);
+    const liveIds = new Set(state.meals.map((m) => m.id));
+    const keptTombstones = stored.filter((m) =>
+      m.deletedAt && !liveIds.has(m.id) && (!tombstone || m.id !== tombstone.id));
+    const all = [...keptTombstones, ...(tombstone ? [tombstone] : []), ...state.meals];
+    await DB.putSetting('meals', all);
+    await DB.enqueueMany((ids || all.map((m) => m.id)).map((id) => ({ kind: 'meal', id })));
+    scheduleSync();
   } catch (e) {
     showBanner('Save failed — meals may not persist.');
   }
@@ -1006,10 +1019,11 @@ document.getElementById('meal-form').addEventListener('submit', async (e) => {
 });
 
 document.getElementById('meal-delete').addEventListener('click', async () => {
+  const gone = state.meals.find((m) => m.id === dialogMealId);
   state.meals = state.meals.filter((m) => m.id !== dialogMealId);
   document.getElementById('meal-dialog').close();
   renderMeals();
-  await saveMeals();
+  await saveMeals(gone ? [gone.id] : undefined, gone ? Store.softDelete(gone) : null);
 });
 document.getElementById('meal-cancel').addEventListener('click', () => {
   document.getElementById('meal-dialog').close();
@@ -1140,10 +1154,29 @@ async function bootSync() {
   if (!hasSession && !returningFromAuth) { renderSyncPanel(); return; }
   try {
     await ensureSync();
+    scheduleSync(0);
   } catch (e) {
     renderSyncPanel({ status: 'error', error: e.message });
   }
 }
+
+/* Push is debounced rather than fired per write: the stock stepper can produce
+   five writes in a second, and the outbox coalesces them anyway. */
+let syncTimer = null;
+function scheduleSync(delay = 1200) {
+  if (typeof Sync === 'undefined' || !Sync.enabled) return;
+  if (syncTimer) clearTimeout(syncTimer);
+  syncTimer = setTimeout(() => { syncTimer = null; Sync.sync(); }, delay);
+}
+
+/* The trigger set the owner chose: on open, on refocus, on reconnect. No
+   polling and no subscription. Note the consequence — while shopping the app
+   stays foregrounded, so none of these fire and the list can go stale for the
+   length of the trip. */
+document.addEventListener('visibilitychange', () => {
+  if (document.visibilityState === 'visible') scheduleSync(0);
+});
+window.addEventListener('online', () => scheduleSync(0));
 
 /* Remote snapshots are applied here, not in sync.js, because only the UI knows
    when a rebuild would land under the user's finger. */
@@ -1228,10 +1261,12 @@ document.getElementById('settings-dialog').addEventListener('click', async (e) =
       await Sync.signInWithGoogle(redirectTo);
     } else if (id === 'sync-start-btn') {
       await Sync.startHousehold();
+      scheduleSync(0);   // this device's data becomes the household's seed
     } else if (id === 'sync-join-btn') {
       document.getElementById('sync-join-row').hidden = false;
     } else if (id === 'sync-redeem-btn') {
       await Sync.redeemInvite(document.getElementById('sync-code').value);
+      scheduleSync(0);
     } else if (id === 'sync-retry-btn') {
       await Sync.init({ client: sbClient, getLocal: Sync._getLocal, onStatus: renderSyncPanel, onSnapshot: applySnapshot });
     } else if (id === 'sync-invite-btn') {

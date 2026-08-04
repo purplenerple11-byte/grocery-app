@@ -180,5 +180,88 @@ const Sync = {
 
   async pendingCount() {
     return DB.outboxCount();
+  },
+
+  // ---- push ----
+
+  /* Seeding is just "mark everything dirty and let push do its job" — no
+     separate upload path, no second set of bugs. Gated on the household id so
+     it runs once per household and is safe to call on every boot. */
+  async seedFromLocal() {
+    if (!Sync.enabled) return { seeded: false };
+    if (await DB.getSetting('sync.seededHouseholdId', null) === Sync.householdId) return { seeded: false };
+    const items = await DB.getAll();
+    const meals = await DB.getSetting('meals', []);
+    await DB.enqueueMany([
+      ...items.map((i) => ({ kind: 'item', id: i.id })),
+      ...meals.map((m) => ({ kind: 'meal', id: m.id }))
+    ]);
+    await DB.putSetting('sync.seededHouseholdId', Sync.householdId);
+    return { seeded: true, items: items.length, meals: meals.length };
+  },
+
+  /* Reads the CURRENT record for each dirty key and upserts it. Entries are
+     removed only after a successful round trip, and only if `queuedAt` is
+     unchanged — an edit made while the request was in flight has to survive.
+     Never clear() the outbox. */
+  async push() {
+    if (!Sync.enabled) return { pushed: 0 };
+    const entries = await DB.outboxAll();
+    if (!entries.length) return { pushed: 0 };
+
+    Sync._set('syncing');
+    try {
+      const itemRows = [];
+      const mealRows = [];
+      const meals = new Map((await DB.getSetting('meals', [])).map((m) => [m.id, m]));
+
+      for (const e of entries) {
+        if (e.kind === 'item') {
+          const rec = await DB.get(e.id);
+          if (rec) itemRows.push(Store.toItemRow(rec, Sync.householdId));
+        } else if (e.kind === 'meal') {
+          const rec = meals.get(e.id);
+          if (rec) mealRows.push(Store.toMealRow(rec, Sync.householdId));
+        }
+        // A key whose record has vanished is still cleared: nothing to send.
+      }
+
+      await Sync._upsert('items', itemRows);
+      await Sync._upsert('meals', mealRows);
+      await DB.outboxRemove(entries);
+
+      Sync.lastSyncAt = Date.now();
+      Sync._set('idle');
+      return { pushed: itemRows.length + mealRows.length };
+    } catch (e) {
+      // The outbox is left intact, so nothing is lost — it retries later.
+      Sync._fail(e);
+      return { pushed: 0, error: e };
+    }
+  },
+
+  async _upsert(table, rows) {
+    for (let i = 0; i < rows.length; i += PUSH_CHUNK) {
+      const { error } = await Sync.client.from(table).upsert(rows.slice(i, i + PUSH_CHUNK), { onConflict: 'id' });
+      if (error) throw error;
+    }
+  },
+
+  /* Single-flight: overlapping calls share one in-flight run rather than
+     racing each other through the same outbox. */
+  _inFlight: null,
+  sync() {
+    if (Sync._inFlight) return Sync._inFlight;
+    Sync._inFlight = (async () => {
+      try {
+        await Sync.seedFromLocal();
+        return await Sync.push();
+      } finally {
+        Sync._inFlight = null;
+      }
+    })();
+    return Sync._inFlight;
   }
 };
+
+const PUSH_CHUNK = 200;
