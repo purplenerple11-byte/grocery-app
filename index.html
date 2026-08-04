@@ -121,6 +121,10 @@
 <dialog id="settings-dialog">
   <h3>Settings</h3>
   <menu>
+    <section id="sync-panel" hidden>
+      <h4 class="sync-head">Sync</h4>
+      <div id="sync-body"></div>
+    </section>
     <button id="export-btn">Export JSON</button>
     <button id="export-pantry-btn">Export pantry</button>
     <p class="dialog-note">Export JSON backs up everything. Export pantry saves just what you have in stock — hand it to an AI to get a meal suggestion.</p>
@@ -132,6 +136,8 @@
 </dialog>
 
 <script src="assets/store.js"></script>
+<script src="assets/sync-config.js"></script>
+<script src="assets/sync.js"></script>
 <script src="assets/app.js"></script>
 </body>
 </html>

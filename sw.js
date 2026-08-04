@@ -1,7 +1,11 @@
-const CACHE = 'grocery-v17';
+const CACHE = 'grocery-v18';
 const ASSETS = [
   './', './index.html', './manifest.json',
   './assets/style.css', './assets/store.js', './assets/app.js',
+  './assets/sync-config.js', './assets/sync.js',
+  // Vendored rather than hotlinked: addAll cannot precache a cross-origin
+  // script (opaque responses fail the install), and the app must boot offline.
+  './assets/vendor/supabase-js-2.111.0.js',
   './icons/icon-192.png', './icons/icon-512.png', './icons/icon-180.png'
 ];
 /* `cache: 'reload'` bypasses the HTTP cache while precaching, so a bumped CACHE

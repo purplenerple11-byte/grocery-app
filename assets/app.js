@@ -31,6 +31,7 @@ function scheduleRender() {
   renderTimer = setTimeout(() => {
     renderTimer = null;
     render();
+    drainSnapshot();
   }, 1500);
 }
 function cancelScheduledRender() {
@@ -1014,6 +1015,163 @@ document.getElementById('merge-file').addEventListener('change', async (e) => {
   showBanner(parts.join(', ') + '.');
 });
 
+/* ── Sync: lazy client load + settings panel ──
+   The 205 KB client is only fetched when it can actually be used: an existing
+   session, or the user reaching for the sign-in button. A signed-out user
+   boots at exactly the speed they did before any of this existed. */
+
+let sbClient = null;
+
+function loadVendor() {
+  if (window.supabase) return Promise.resolve();
+  return new Promise((resolve, reject) => {
+    const s = document.createElement('script');
+    s.src = 'assets/vendor/supabase-js-2.111.0.js';
+    s.onload = resolve;
+    s.onerror = () => reject(new Error('Could not load the sync library.'));
+    document.head.appendChild(s);
+  });
+}
+
+/* Every entry point is guarded on this resolving, so a failed vendor load, a
+   paused backend, or sync.js being absent entirely all degrade to "the app
+   works locally" rather than to a broken app. */
+async function ensureSync() {
+  if (sbClient) return true;
+  if (typeof Sync === 'undefined' || typeof SYNC_CONFIG === 'undefined') return false;
+  await loadVendor();
+  sbClient = window.supabase.createClient(SYNC_CONFIG.url, SYNC_CONFIG.key, {
+    auth: { persistSession: true, autoRefreshToken: true, detectSessionInUrl: true }
+  });
+  await Sync.init({
+    client: sbClient,
+    getLocal: async () => ({
+      // RAM wins over storage: commit() renders before it persists, so a pull
+      // reading storage alone could overwrite an edit already on screen.
+      items: Store.overlayLocal(await DB.getAll(), state.items),
+      meals: state.meals
+    }),
+    onStatus: renderSyncPanel,
+    onSnapshot: applySnapshot
+  });
+  return true;
+}
+
+/* Only auto-loads when a session already exists — checking localStorage costs
+   nothing and avoids the download for everyone else. */
+async function bootSync() {
+  const hasSession = Object.keys(localStorage).some((k) => k.startsWith(SYNC_CONFIG.storagePrefix));
+  const returningFromAuth = /[?#].*(code=|access_token=)/.test(location.href);
+  if (!hasSession && !returningFromAuth) { renderSyncPanel(); return; }
+  try {
+    await ensureSync();
+  } catch (e) {
+    renderSyncPanel({ status: 'error', error: e.message });
+  }
+}
+
+/* Remote snapshots are applied here, not in sync.js, because only the UI knows
+   when a rebuild would land under the user's finger. */
+let pendingSnapshot = null;
+function canApplyNow() {
+  return !document.querySelector('dialog[open]')  // a stale submit target
+      && renderTimer === null;                    // inside the stepper debounce
+}
+function applySnapshot(snap) {
+  if (!canApplyNow()) { pendingSnapshot = snap; return; }
+  pendingSnapshot = null;
+  state.items = snap.items;
+  state.meals = snap.meals;
+  render();
+}
+function drainSnapshot() {
+  if (pendingSnapshot) applySnapshot(pendingSnapshot);
+}
+// The two moments a deferred snapshot becomes safe to apply.
+document.querySelectorAll('dialog').forEach((d) => d.addEventListener('close', drainSnapshot));
+
+const SYNC_DOTS = { idle: 'ok', syncing: 'pending', offline: 'low', error: 'out' };
+
+function renderSyncPanel(s) {
+  const panel = document.getElementById('sync-panel');
+  const body = document.getElementById('sync-body');
+  if (!panel || !body) return;
+  panel.hidden = false;
+  const st = s || (typeof Sync !== 'undefined' ? Sync.snapshotStatus() : { status: 'off' });
+
+  if (st.status === 'off' || st.status === 'signed-out') {
+    body.innerHTML = `
+      <p class="dialog-note">Your list stays on this device until you sign in.</p>
+      <input type="email" id="sync-email" placeholder="you@example.com" autocomplete="email">
+      <button id="sync-email-btn" class="btn-clay">Send sign-in link</button>
+      <button id="sync-google-btn">Continue with Google</button>`;
+    return;
+  }
+  if (st.status === 'choosing') {
+    body.innerHTML = `
+      <p class="dialog-note">Signed in as ${escapeHtml(st.email || '')}. Start a household, or join one you were invited to.</p>
+      <button id="sync-start-btn">Start a household</button>
+      <button id="sync-join-btn">I have an invite code</button>
+      <div id="sync-join-row" hidden>
+        <input type="text" id="sync-code" placeholder="10-character code" maxlength="13" autocapitalize="characters">
+        <button id="sync-redeem-btn" class="btn-clay">Join</button>
+      </div>`;
+    return;
+  }
+
+  const label = {
+    idle: st.lastSyncAt ? `Synced · ${formatDate(st.lastSyncAt)}` : 'Synced',
+    syncing: 'Syncing…',
+    offline: 'Offline · changes will send later',
+    error: 'Sync failed'
+  }[st.status] || st.status;
+
+  body.innerHTML = `
+    <p class="pill"><span class="dot ${SYNC_DOTS[st.status] || 'pending'}"></span>${escapeHtml(label)}</p>
+    <p class="dialog-note">${escapeHtml(st.email || '')}</p>
+    ${st.status === 'error' ? '<button id="sync-retry-btn">Retry</button>' : ''}
+    <button id="sync-invite-btn">Invite someone</button>
+    <p class="dialog-note" id="sync-invite-out" hidden></p>
+    <button id="sync-signout-btn">Sign out</button>`;
+}
+
+/* Delegated so the panel can re-render freely without rebinding. */
+document.getElementById('settings-dialog').addEventListener('click', async (e) => {
+  const id = e.target.id;
+  if (!id.startsWith('sync-')) return;
+  const redirectTo = location.href.split(/[?#]/)[0];
+
+  try {
+    if (id === 'sync-email-btn') {
+      await ensureSync();
+      const email = document.getElementById('sync-email').value;
+      await Sync.signInWithEmail(email, redirectTo);
+      document.getElementById('sync-body').innerHTML =
+        `<p class="dialog-note">Check ${escapeHtml(email)} for a sign-in link.</p>`;
+    } else if (id === 'sync-google-btn') {
+      await ensureSync();
+      await Sync.signInWithGoogle(redirectTo);
+    } else if (id === 'sync-start-btn') {
+      await Sync.startHousehold();
+    } else if (id === 'sync-join-btn') {
+      document.getElementById('sync-join-row').hidden = false;
+    } else if (id === 'sync-redeem-btn') {
+      await Sync.redeemInvite(document.getElementById('sync-code').value);
+    } else if (id === 'sync-retry-btn') {
+      await Sync.init({ client: sbClient, getLocal: Sync._getLocal, onStatus: renderSyncPanel, onSnapshot: applySnapshot });
+    } else if (id === 'sync-invite-btn') {
+      const code = await Sync.createInvite();
+      const out = document.getElementById('sync-invite-out');
+      out.hidden = false;
+      out.textContent = `Code: ${code} — single use, expires in 24 hours.`;
+    } else if (id === 'sync-signout-btn') {
+      await Sync.signOut();
+    }
+  } catch (err) {
+    showBanner(err.message || 'Sync action failed.');
+  }
+});
+
 async function boot() {
   /* A second tab holding the previous schema blocks the upgrade, and the open
      request then never settles. Racing it means a blocked upgrade shows an
@@ -1044,5 +1202,6 @@ async function boot() {
   state.meals = Store.live(Store.normalizeMeals(await DB.getSetting('meals', [])));
   render();
   if ('serviceWorker' in navigator) navigator.serviceWorker.register('./sw.js');
+  bootSync();
 }
 boot();
