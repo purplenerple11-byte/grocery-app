@@ -11,7 +11,8 @@ that restocks inventory by the quantity you actually bought.
 - **Stack:** vanilla HTML/CSS/JS. **No framework, no npm, no build step, no ES
   modules** (plain `<script>` tags — deliberate, so tests run over `file://`).
 - **Storage:** IndexedDB, write-through on every change. In-memory fallback +
-  banner if unavailable. JSON export/import is the only backup.
+  banner if unavailable. JSON export/import is the account-free backup; signed
+  in, data also syncs to the household (see Sync).
 - **Deployed:** GitHub Pages → https://purplenerple11-byte.github.io/grocery-app/
   Repo `github.com/purplenerple11-byte/grocery-app`, branch `main`.
   Pages deploys from `main` root — **pushing to main publishes it** (~1 min).
@@ -101,7 +102,11 @@ assets/app.js              all UI: rendering, event delegation, dialogs
 sw.js                      service worker; bump `const CACHE` when assets change
 tools/make_icons.py        regenerates icons/ (stdlib only, no Pillow)
 tests/run-tests.html       open in browser to run tests
-tests/store.test.js        63 tests, all passing
+tests/fake-supabase.js     hand-written Supabase stand-in; no network in tests
+assets/sync.js             sync engine: auth, outbox push, delta pull. No DOM.
+assets/sync-config.js      Supabase URL + publishable key (public by design)
+supabase/schema.sql        tables, RLS policies, RPCs — paste into the SQL editor
+tests/store.test.js        115 tests, all passing (incl. sync reconciliation)
 PRODUCT.md                 durable product truth (users, mechanism, constraints)
 docs/DESIGN.md             the implemented dark system (source of truth for look)
 docs/superpowers/specs/    the design spec — read this first
