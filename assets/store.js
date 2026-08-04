@@ -10,7 +10,16 @@ function newId() {
 
 /* Fixed display order for known categories; anything else (including future
    user-added categories) sorts alphabetically after all of these. */
-const CATEGORY_ORDER = ['Produce', 'Dairy', 'Meat', 'Frozen', 'Pantry', 'Condiments', 'Spices', 'Drinks', 'Household', 'Other'];
+/* Shelf order. Singular variants ('Spice', 'Condiment') are deliberately absent:
+   they were duplicates of the plural and got folded in. 'Canned & Jarred' is one
+   category, not two — splitting it into 'Canned' and 'Jarred' just produced a
+   third redundant option next to the one the data actually used. */
+const CATEGORY_ORDER = [
+  'Produce', 'Dairy', 'Meat', 'Frozen',
+  'Grains & Starch', 'Baking', 'Pantry', 'Canned & Jarred',
+  'Oil & Vinegar', 'Condiments', 'Spices',
+  'Drinks', 'Household', 'Other'
+];
 
 const Store = {
   CATEGORY_ORDER,
@@ -33,6 +42,22 @@ const Store = {
     }
     return [...groups.entries()].sort((a, b) => rank(a[0]) - rank(b[0]) || a[0].localeCompare(b[0]));
   },
+  /* Categories the item editor offers: the built-in list in shelf order, then
+     any other category actually present in the data, alphabetically — the same
+     ranking groupByCategory uses. A merge import accepts any category string
+     (see sanitizeItemFields) and the inventory already renders unknown ones, so
+     the editor has to be able to show them. `current` is always included, which
+     is what stops opening an item from silently rewriting its category. */
+  categoryChoices(items, current = null) {
+    const known = new Set(CATEGORY_ORDER);
+    const extra = new Set();
+    for (const it of items || []) {
+      if (it && typeof it.category === 'string' && it.category && !known.has(it.category)) extra.add(it.category);
+    }
+    if (typeof current === 'string' && current && !known.has(current)) extra.add(current);
+    return [...CATEGORY_ORDER, ...[...extra].sort((a, b) => a.localeCompare(b))];
+  },
+
   /* Every field is overridable, including the timestamps and `deletedAt`.
      That matters for sync: a record arriving from another device has to be
      reconstructable exactly as it was written there, and a hardcoded

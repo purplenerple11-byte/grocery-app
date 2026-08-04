@@ -262,11 +262,53 @@ dialog {
 }
 dialog::backdrop { background: rgba(0, 0, 0, .55); }
 dialog h3 { font-size: 20px; margin-bottom: 12px; }
-dialog label { display: block; font-size: 12px; color: var(--muted); margin-bottom: 10px; }
+dialog label, dialog .field { display: block; font-size: 12px; color: var(--muted); margin-bottom: 10px; }
 dialog input:not([type="checkbox"]), dialog select {
   width: 100%; margin-top: 4px; background: var(--surface); border: 1px solid var(--hairline);
   border-radius: 8px; padding: 8px 10px; color: var(--ink); font-size: 14px;
 }
+
+/* Category picker — replaces a <select> so the selection dots are ours to
+   position; Android's native popup drifts them inline next to the label.
+   Matches the field styling above when closed, the preflight list when open. */
+.picker-btn {
+  width: 100%; margin-top: 4px; background: var(--surface); border: 1px solid var(--hairline);
+  border-radius: 8px; padding: 8px 10px; color: var(--ink); font-size: 14px;
+  display: flex; align-items: center; gap: 8px; text-align: left;
+}
+.picker-btn::after {
+  content: '▾'; margin-left: auto; font-size: 10px; color: var(--muted);
+  transition: transform .2s ease;
+}
+.picker-btn[aria-expanded="true"]::after { transform: rotate(180deg); }
+.picker-list {
+  max-height: 38vh; overflow-y: auto; margin-top: 6px;
+  border: 1px solid var(--hairline); border-radius: 8px;
+  background: var(--surface); padding: 4px 0;
+}
+.picker-list[hidden] { display: none; }
+.picker-row {
+  display: flex; align-items: center; gap: 11px; padding: 9px 12px;
+  border-bottom: 1px solid var(--hairline); cursor: pointer;
+}
+.picker-row:last-child { border-bottom: none; }
+.picker-row input[type="radio"] { position: absolute; opacity: 0; pointer-events: none; }
+/* The dot is a flex sibling of the label, pinned by margin-left:auto — it can
+   never track the text width the way the native popup's did. */
+.picker-check {
+  width: 20px; height: 20px; border-radius: 50%; border: 1.5px solid var(--muted);
+  flex: none; margin-left: auto; position: relative;
+  transition: border-color .15s ease;
+}
+.picker-check::after {
+  content: ''; position: absolute; inset: 3.5px; border-radius: 50%;
+  background: var(--clay); transform: scale(0); transition: transform .15s ease;
+}
+.picker-row input:checked ~ .picker-check { border-color: var(--clay); }
+.picker-row input:checked ~ .picker-check::after { transform: scale(1); }
+.picker-row input:focus-visible ~ .picker-check { outline: 2px solid var(--clay); outline-offset: 2px; }
+.picker-name { font-family: var(--serif); font-size: 16px; color: var(--ink); }
+.picker-new { color: var(--muted); font-family: var(--serif); font-size: 15px; }
 dialog menu { display: flex; flex-direction: column; gap: 8px; margin-top: 14px; padding: 0; list-style: none; }
 .dialog-note { font-size: 12px; color: var(--muted); margin: -6px 0 12px; }
 

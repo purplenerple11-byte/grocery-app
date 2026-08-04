@@ -678,12 +678,87 @@ document.getElementById('inv-grid').addEventListener('click', (e) => {
 
 let dialogItemId = null; // null = creating a new item
 
+/* ── Category picker ──
+   Rows are radios named "category", so form.elements.category.value still
+   reports the checked one and the submit handler needs no special case. */
+const categoryList = document.getElementById('category-list');
+const categoryBtn = document.getElementById('category-btn');
+
+function setCategory(value) {
+  document.getElementById('category-current').textContent = value;
+  const hit = [...categoryList.querySelectorAll('input[name="category"]')]
+    .find((r) => r.value === value);
+  if (hit) hit.checked = true;
+}
+
+function openCategoryList(open) {
+  categoryList.hidden = !open;
+  categoryBtn.setAttribute('aria-expanded', String(open));
+  if (!open) return;
+  /* Open on the current selection rather than at the top — with 14+ categories
+     the checked row is usually out of view otherwise. */
+  const checked = categoryList.querySelector('input:checked');
+  if (!checked) return;
+  checked.closest('.picker-row').scrollIntoView({ block: 'center' });
+  checked.focus();
+}
+
+function renderCategoryList(current) {
+  categoryList.innerHTML = Store.categoryChoices(state.items, current).map((c) => `
+    <label class="picker-row">
+      <input type="radio" name="category" value="${escapeHtml(c)}"${c === current ? ' checked' : ''}>
+      <span class="picker-name">${escapeHtml(c)}</span>
+      <span class="picker-check"></span>
+    </label>`).join('')
+    + `<button type="button" class="picker-row picker-new" id="category-new">＋ New category…</button>`;
+}
+
+categoryBtn.addEventListener('click', () => openCategoryList(categoryList.hidden));
+
+/* Choosing a row closes the list — one tap, same as the native popup did. */
+categoryList.addEventListener('change', (e) => {
+  if (e.target.name !== 'category') return;
+  setCategory(e.target.value);
+  openCategoryList(false);
+  categoryBtn.focus();
+});
+
+/* "＋ New category…": prompt, add a row, select it. A category is just a string
+   on the item, so nothing is persisted until the item itself is saved. */
+categoryList.addEventListener('click', (e) => {
+  if (!e.target.closest('#category-new')) return;
+  const name = (prompt('New category name') || '').trim();
+  if (!name) return; // cancelled — the list stays as it was
+  // Re-use a row that already matches, so casing variants don't split a category.
+  const existing = [...categoryList.querySelectorAll('input[name="category"]')]
+    .find((r) => r.value.toLowerCase() === name.toLowerCase());
+  if (existing) {
+    setCategory(existing.value);
+  } else {
+    document.getElementById('category-new').insertAdjacentHTML('beforebegin', `
+      <label class="picker-row">
+        <input type="radio" name="category" value="${escapeHtml(name)}" checked>
+        <span class="picker-name">${escapeHtml(name)}</span>
+        <span class="picker-check"></span>
+      </label>`);
+    document.getElementById('category-current').textContent = name;
+  }
+  openCategoryList(false);
+  categoryBtn.focus();
+});
+
 function openItemDialog(item) {
   dialogItemId = item ? item.id : null;
   const form = document.getElementById('item-form');
   document.getElementById('item-dialog-title').textContent = item ? 'Edit item' : 'New inventory item';
   form.elements.name.value = item ? item.name : '';
-  form.elements.category.value = item && CATEGORY_ORDER.includes(item.category) ? item.category : 'Other';
+  /* Built fresh each open: the list depends on current data, and an item whose
+     category isn't built in must still show its own category rather than
+     falling back to Other (which a save would then make permanent). */
+  const current = (item && item.category) || 'Other';
+  renderCategoryList(current);
+  setCategory(current);
+  openCategoryList(false); // always starts collapsed
   form.elements.unit.value = item ? item.unit : '';
   form.elements.tracked.checked = item ? item.tracked : true;
   form.elements.stock.value = item ? item.stock : 0;

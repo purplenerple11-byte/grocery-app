@@ -57,14 +57,19 @@
   <form id="item-form">
     <h3 id="item-dialog-title">Edit item</h3>
     <label>Name <input name="name" required></label>
-    <label>Category
-      <select name="category">
-        <option>Produce</option><option>Dairy</option><option>Meat</option>
-        <option>Frozen</option><option>Pantry</option><option>Condiments</option>
-        <option>Spices</option><option>Drinks</option><option>Household</option>
-        <option>Other</option>
-      </select>
-    </label>
+    <!-- Not a <select>: Android's native popup mislays out its own radio dots
+         (they jump inline next to the label) and the page cannot style them.
+         This picker is ordinary markup, so the layout is ours. Rows are radios
+         named "category", which keeps form.elements.category.value working.
+         Built in openItemDialog from Store.categoryChoices, so categories that
+         arrived via import are selectable and preserved. -->
+    <div class="field">Category
+      <button type="button" id="category-btn" class="picker-btn"
+              aria-expanded="false" aria-controls="category-list">
+        <span id="category-current"></span>
+      </button>
+      <div id="category-list" class="picker-list" hidden></div>
+    </div>
     <label>Unit (label only) <input name="unit" placeholder="e.g. cartons"></label>
     <label class="check-label"><input type="checkbox" name="tracked"> Track in inventory</label>
     <label>Stock <input type="number" name="stock" min="0" value="0"></label>
