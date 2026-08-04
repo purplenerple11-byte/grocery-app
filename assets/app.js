@@ -1225,19 +1225,34 @@ document.querySelectorAll('dialog').forEach((d) => d.addEventListener('close', d
 
 const SYNC_DOTS = { idle: 'ok', syncing: 'pending', offline: 'low', error: 'out' };
 
+/* A modal <dialog> renders in the browser's top layer, which sits above every
+   z-index on the page — so #banner painted *underneath* the settings dialog and
+   sync errors were effectively invisible. Errors raised while the dialog is open
+   have to be shown inside it. */
+function showSyncError(msg) {
+  const slot = document.getElementById('sync-error');
+  if (!slot || !document.getElementById('settings-dialog').open) { showBanner(msg); return; }
+  slot.textContent = msg;
+  slot.hidden = false;
+}
+
 function renderSyncPanel(s) {
   const panel = document.getElementById('sync-panel');
   const body = document.getElementById('sync-body');
   if (!panel || !body) return;
   panel.hidden = false;
   const st = s || (typeof Sync !== 'undefined' ? Sync.snapshotStatus() : { status: 'off' });
+  // Anything half-typed must survive a re-render — an auth-state change can
+  // rebuild this panel mid-interaction.
+  const typedEmail = (document.getElementById('sync-email') || {}).value || '';
 
   if (st.status === 'off' || st.status === 'signed-out') {
     body.innerHTML = `
       <p class="dialog-note">Your list stays on this device until you sign in.</p>
-      <input type="email" id="sync-email" placeholder="you@example.com" autocomplete="email">
+      <input type="email" id="sync-email" placeholder="you@example.com" autocomplete="email" value="${escapeHtml(typedEmail)}">
       <button id="sync-email-btn" class="btn-clay">Send sign-in link</button>
-      <button id="sync-google-btn">Continue with Google</button>`;
+      <button id="sync-google-btn">Continue with Google</button>
+      <p class="sync-error" id="sync-error" hidden></p>`;
     return;
   }
   if (st.status === 'choosing') {
@@ -1248,7 +1263,8 @@ function renderSyncPanel(s) {
       <div id="sync-join-row" hidden>
         <input type="text" id="sync-code" placeholder="10-character code" maxlength="13" autocapitalize="characters">
         <button id="sync-redeem-btn" class="btn-clay">Join</button>
-      </div>`;
+      </div>
+      <p class="sync-error" id="sync-error" hidden></p>`;
     return;
   }
 
@@ -1265,7 +1281,8 @@ function renderSyncPanel(s) {
     ${st.status === 'error' ? '<button id="sync-retry-btn">Retry</button>' : ''}
     <button id="sync-invite-btn">Invite someone</button>
     <p class="dialog-note" id="sync-invite-out" hidden></p>
-    <button id="sync-signout-btn">Sign out</button>`;
+    <button id="sync-signout-btn">Sign out</button>
+    <p class="sync-error" id="sync-error" hidden></p>`;
 }
 
 /* Delegated so the panel can re-render freely without rebinding. */
@@ -1276,8 +1293,11 @@ document.getElementById('settings-dialog').addEventListener('click', async (e) =
 
   try {
     if (id === 'sync-email-btn') {
-      await ensureSync();
+      // Read BEFORE ensureSync: loading the client fires an auth-state change,
+      // which re-renders this panel and replaces the input with an empty one.
+      // Reading afterwards silently swallowed the first attempt every time.
       const email = document.getElementById('sync-email').value;
+      await ensureSync();
       await Sync.signInWithEmail(email, redirectTo);
       document.getElementById('sync-body').innerHTML =
         `<p class="dialog-note">Check ${escapeHtml(email)} for a sign-in link.</p>`;
@@ -1303,7 +1323,7 @@ document.getElementById('settings-dialog').addEventListener('click', async (e) =
       await Sync.signOut();
     }
   } catch (err) {
-    showBanner(err.message || 'Sync action failed.');
+    showSyncError(err.message || 'Sync action failed.');
   }
 });
 
