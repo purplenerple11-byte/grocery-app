@@ -297,6 +297,10 @@ the implementer where an item collides with existing code.
    - *Unit alignment:* `.row .name` is now `flex: 1` and the `.unit` span is
      rendered just before `.stepper`, so units sit right-aligned next to the
      minus button instead of floating after the item name.
+   - *Physical 1:1 vertical inventory sheet drag:* Swiping up/down on `#sheet-bar`
+     (or pulling down from the top of the open sheet) follows the finger 1:1 in
+     real-time with rubber-banding, velocity-based fling detection, and smooth
+     spring snapping (`cubic-bezier(.25, 1, .5, 1)`).
 
 4. ~~**Meal selection pre-flight modal**~~ (Built)
    - *Issue:* appending all meal components creates redundant purchases and forces
