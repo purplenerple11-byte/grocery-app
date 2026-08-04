@@ -236,3 +236,17 @@ revoke execute on function public.my_household(), public.ensure_household(),
 grant  execute on function public.my_household(), public.ensure_household(),
                             public.create_invite(), public.redeem_invite(text)
   to authenticated;
+
+-- ---------------------------------------------------------- keepalive ------
+-- Free-tier projects pause after ~1 week of inactivity, which would leave the
+-- household with silently failing syncs. A scheduled ping (see
+-- .github/workflows/supabase-keepalive.yml) calls this twice a week.
+--
+-- Deliberately granted to `anon`: it takes no arguments, touches no table, and
+-- returns a constant, so it discloses nothing beyond "the project exists".
+create or replace function public.keepalive()
+returns integer language sql stable
+set search_path = pg_temp
+as $$ select 1 $$;
+
+grant execute on function public.keepalive() to anon, authenticated;
