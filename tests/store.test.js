@@ -1017,3 +1017,177 @@ test('v1 databases upgrade to v2 without losing data', async () => {
   assert(typeof normalised.updatedAt === 'number', 'backfilled a clock it never had');
   restoreDb();
 });
+
+/* ── V6: the sync engine, driven against a fake client ── */
+
+async function syncFixture(opts = {}) {
+  // The open connection must be closed first, or deleteDatabase is BLOCKED and
+  // silently leaves the previous test's data (and its cursor) in place.
+  if (DB._db) { DB._db.close(); DB._db = null; }
+  await new Promise((res) => { const r = indexedDB.deleteDatabase('grocery-sync'); r.onsuccess = r.onerror = r.onblocked = res; });
+  await DB.init('grocery-sync');
+  DB.syncing = true;
+  const client = makeFakeSupabase(opts);
+  await Sync.init({
+    client,
+    getLocal: async () => ({
+      items: Store.overlayLocal(await DB.getAll(), []),
+      meals: await DB.getSetting('meals', [])
+    }),
+    onStatus: () => {},
+    onSnapshot: (s) => { Sync._lastSnapshot = s; }
+  });
+  return client;
+}
+function resetSync() {
+  if (DB._db) { DB._db.close(); DB._db = null; }
+  DB.persistent = true; DB._mem = null; DB.syncing = false; DB._memOutbox = new Map();
+  Sync.client = null; Sync.session = null; Sync.householdId = null; Sync._lastSnapshot = null;
+}
+
+test('sync: signing in with a household reaches idle and enables the outbox', async () => {
+  await syncFixture();
+  assertEqual(Sync.status, 'idle');
+  assertEqual(Sync.householdId, 'h1');
+  assertEqual(Sync.enabled, true);
+  resetSync();
+});
+
+test('sync: no household means choosing, and nothing is enqueued', async () => {
+  await syncFixture({ household: null });
+  assertEqual(Sync.status, 'choosing');
+  assertEqual(DB.syncing, false, 'a user without a household must not queue writes');
+  resetSync();
+});
+
+test('sync: seed marks every local record dirty exactly once', async () => {
+  const client = await syncFixture();
+  await DB.replaceAllWithMeals([Store.createItem('Milk', { id: 'milk' })], [Store.createMeal('Tacos', ['milk'], { id: 'm1' })]);
+  await DB.putSetting('meals', [Store.createMeal('Tacos', ['milk'], { id: 'm1' })]);
+
+  assertEqual((await Sync.seedFromLocal()).seeded, true);
+  assertEqual(await DB.outboxCount(), 2, 'one item + one meal');
+  assertEqual((await Sync.seedFromLocal()).seeded, false, 'seeding is idempotent');
+  resetSync();
+});
+
+test('sync: push uploads dirty records and drains the outbox', async () => {
+  const client = await syncFixture();
+  await DB.put(Store.createItem('Milk', { id: 'milk', stock: 2 }));
+  await DB.putSetting('meals', [Store.createMeal('Tacos', ['milk'], { id: 'm1' })]);
+  await DB.enqueue('meal', 'm1');
+
+  const res = await Sync.push();
+  assertEqual(res.pushed, 2);
+  assertEqual(await DB.outboxCount(), 0);
+  assertEqual(client._tables.items.length, 1);
+  assertEqual(client._tables.items[0].name, 'Milk');
+  assertEqual(client._tables.items[0].household_id, 'h1');
+  assertEqual(client._tables.meals[0].item_ids, ['milk']);
+  resetSync();
+});
+
+test('sync: a failed push loses nothing and leaves the outbox intact', async () => {
+  await syncFixture({ fail: { message: 'network down' } });
+  DB.syncing = true;
+  await DB.put(Store.createItem('Milk', { id: 'milk' }));
+  assertEqual(await DB.outboxCount(), 1);
+
+  const res = await Sync.push();
+  assertEqual(res.pushed, 0);
+  assertEqual(await DB.outboxCount(), 1, 'the change is still queued for the next attempt');
+  resetSync();
+});
+
+test('sync: pull adopts remote records and renders them', async () => {
+  const remote = Store.toItemRow(Store.createItem('Bread', { id: 'bread', stock: 1 }), 'h1');
+  remote.updated_at = '2026-01-01T00:00:10.000Z';
+  await syncFixture({ items: [remote] });
+
+  const res = await Sync.pull();
+  assertEqual(res.applied, 1);
+  assertEqual((await DB.getAll()).map((r) => r.name), ['Bread']);
+  assertEqual(Sync._lastSnapshot.items.map((i) => i.name), ['Bread']);
+  assertEqual(await DB.getSetting('sync.cursor'), '2026-01-01T00:00:08.000Z', 'cursor rewound by the overlap');
+  resetSync();
+});
+
+test('sync: a remote tombstone removes the item locally but keeps the record', async () => {
+  const row = Store.toItemRow(Store.softDelete(Store.createItem('Bread', { id: 'bread' })), 'h1');
+  row.updated_at = '2026-01-01T00:00:10.000Z';
+  await syncFixture({ items: [row] });
+  await DB.put(Store.createItem('Bread', { id: 'bread' }));
+
+  await Sync.pull();
+  assertEqual(Sync._lastSnapshot.items.length, 0, 'gone from the UI');
+  assert((await DB.get('bread')).deletedAt, 'but still a tombstone, so it cannot come back');
+  resetSync();
+});
+
+test('sync: a record the local side won is queued to push back', async () => {
+  const stale = Store.toItemRow(Store.createItem('Milk', { id: 'milk', stock: 1, updatedAt: 100 }), 'h1');
+  stale.updated_at = '2026-01-01T00:00:10.000Z';
+  await syncFixture({ items: [stale] });
+  await DB.put(Store.createItem('Milk', { id: 'milk', stock: 99, updatedAt: 9999 }));
+  await DB.outboxRemove(await DB.outboxAll());   // pretend it was already pushed
+
+  await Sync.pull();
+  assertEqual((await DB.get('milk')).stock, 99, 'the newer local edit survives');
+  assertEqual((await DB.outboxAll()).map((e) => e.key), ['item:milk'],
+    'and is re-queued — without this the two sides never converge');
+  resetSync();
+});
+
+test('sync: dry run reports what would change and writes nothing', async () => {
+  const row = Store.toItemRow(Store.createItem('Bread', { id: 'bread' }), 'h1');
+  row.updated_at = '2026-01-01T00:00:10.000Z';
+  await syncFixture({ items: [row] });
+
+  const res = await Sync.pull({ apply: false });
+  assertEqual(res.dryRun, true);
+  assertEqual(res.fetched.items, 1);
+  assertEqual((await DB.getAll()).length, 0, 'nothing was written');
+  assertEqual(await DB.getSetting('sync.cursor'), null, 'the cursor did not move');
+  resetSync();
+});
+
+test('sync: a merge that would destroy most local data is refused', async () => {
+  await syncFixture();
+  // Ten local items, and a reconciler that (hypothetically) returns almost none.
+  const many = Array.from({ length: 10 }, (_, n) => Store.createItem('Item' + n, { id: 'i' + n }));
+  await DB.replaceAllWithMeals(many, []);
+  const realReconcile = Store.reconcileSnapshot;
+  Store.reconcileSnapshot = () => ({ items: [many[0]], meals: [], toPush: { items: [], meals: [] } });
+
+  const res = await Sync.pull();
+  Store.reconcileSnapshot = realReconcile;
+
+  assert(res.error, 'the pull refused rather than applying');
+  assert(/would remove 9 of 10/.test(res.error.message), res.error.message);
+  assertEqual((await DB.getAll()).length, 10, 'local data untouched');
+  resetSync();
+});
+
+test('sync: the pre-sync backup is written once and never overwritten', async () => {
+  const row = Store.toItemRow(Store.createItem('Bread', { id: 'bread' }), 'h1');
+  row.updated_at = '2026-01-01T00:00:10.000Z';
+  await syncFixture({ items: [row] });
+  await DB.put(Store.createItem('Original', { id: 'orig' }));
+
+  await Sync.pull();
+  const first = await DB.getSetting('sync.preSyncBackup');
+  assertEqual(first.items.map((i) => i.name), ['Original'], 'captured the pre-sync state');
+
+  await DB.putSetting('sync.cursor', null);
+  await Sync.pull();
+  assertEqual((await DB.getSetting('sync.preSyncBackup')).at, first.at, 'not overwritten by a later pull');
+  resetSync();
+});
+
+test('sync: sync() is single-flight', async () => {
+  const client = await syncFixture();
+  await DB.put(Store.createItem('Milk', { id: 'milk' }));
+  const [a, b] = await Promise.all([Sync.sync(), Sync.sync()]);
+  assertEqual(a, b, 'concurrent triggers share one run rather than racing the outbox');
+  resetSync();
+});

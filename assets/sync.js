@@ -247,15 +247,120 @@ const Sync = {
     }
   },
 
+  // ---- pull ----
+
+  /* Fetches everything changed since the cursor, reconciles it against the
+     local copy, and applies the result in one transaction.
+
+     `apply: false` runs the whole thing except the write and reports what
+     WOULD change — the safe way to point this at real data the first time. */
+  async pull({ apply = true } = {}) {
+    if (!Sync.enabled) return { applied: 0 };
+    Sync._set('syncing');
+    try {
+      const cursor = await DB.getSetting('sync.cursor', null);
+      const [itemRows, mealRows] = await Promise.all([
+        Sync._fetchDelta('items', cursor),
+        Sync._fetchDelta('meals', cursor)
+      ]);
+
+      const remote = {
+        items: itemRows.map(Store.fromItemRow),
+        meals: mealRows.map(Store.fromMealRow)
+      };
+      const local = await Sync._getLocal();
+      const merged = Store.reconcileSnapshot(local, remote);
+      const nextCursor = Store.nextCursor([...itemRows, ...mealRows], cursor);
+
+      if (!apply) {
+        Sync._set('idle');
+        return {
+          dryRun: true,
+          fetched: { items: itemRows.length, meals: mealRows.length },
+          localBefore: { items: local.items.length, meals: local.meals.length },
+          mergedAfter: { items: merged.items.length, meals: merged.meals.length },
+          wouldPushBack: merged.toPush,
+          nextCursor
+        };
+      }
+
+      /* Last line of defence. A reconciler bug does not throw — it quietly
+         returns a smaller, plausible-looking set, that set is written to every
+         device, and the correct-looking result propagates. Refusing to apply a
+         merge that destroys most of the local data turns the worst failure
+         mode from silent into visible. A genuine mass-delete by another member
+         trips this too; that is the right trade. */
+      const liveBefore = Store.live(local.items).length;
+      const liveAfter = Store.live(merged.items).length;
+      if (liveBefore > 3 && liveAfter * 2 < liveBefore) {
+        throw new Error(`Sync stopped: this would remove ${liveBefore - liveAfter} of ${liveBefore} items. Nothing changed.`);
+      }
+
+      await Sync._backupOnce(local);
+      // Items, meals, cursor and re-push keys in ONE transaction: a cursor that
+      // advanced past rows that were never applied is a permanent silent hole.
+      await DB.applyPull({
+        items: merged.items,
+        meals: merged.meals,
+        cursor: nextCursor,
+        enqueue: [
+          ...merged.toPush.items.map((id) => ({ kind: 'item', id })),
+          ...merged.toPush.meals.map((id) => ({ kind: 'meal', id }))
+        ]
+      });
+
+      Sync._onSnapshot({ items: Store.live(merged.items), meals: Store.live(merged.meals) });
+      Sync.lastSyncAt = Date.now();
+      Sync._set('idle');
+      return { applied: itemRows.length + mealRows.length, rePushed: merged.toPush };
+    } catch (e) {
+      Sync._fail(e);
+      return { applied: 0, error: e };
+    }
+  },
+
+  async _fetchDelta(table, cursor) {
+    const out = [];
+    let from = cursor;
+    for (let page = 0; page < MAX_PAGES; page++) {
+      let q = Sync.client.from(table).select('*')
+        .eq('household_id', Sync.householdId)
+        .order('updated_at')
+        .limit(PAGE_SIZE);
+      if (from) q = q.gt('updated_at', from);
+      const { data, error } = await q;
+      if (error) throw error;
+      out.push(...(data || []));
+      if (!data || data.length < PAGE_SIZE) break;
+      from = data[data.length - 1].updated_at;
+    }
+    return out;
+  },
+
+  /* Written once, before the first pull ever touches real data, and never
+     overwritten. If the reconciler turns out to be wrong on live data this is
+     the only way back. */
+  async _backupOnce(local) {
+    if (await DB.getSetting('sync.preSyncBackup', null)) return;
+    await DB.putSetting('sync.preSyncBackup', {
+      at: Date.now(),
+      items: Store.live(local.items),
+      meals: Store.live(local.meals)
+    });
+  },
+
   /* Single-flight: overlapping calls share one in-flight run rather than
-     racing each other through the same outbox. */
+     racing each other through the same outbox. Push before pull, so local
+     work is on the server before its copy comes back. */
   _inFlight: null,
   sync() {
     if (Sync._inFlight) return Sync._inFlight;
     Sync._inFlight = (async () => {
       try {
         await Sync.seedFromLocal();
-        return await Sync.push();
+        const pushed = await Sync.push();
+        const pulled = await Sync.pull();
+        return { pushed, pulled };
       } finally {
         Sync._inFlight = null;
       }
@@ -265,3 +370,5 @@ const Sync = {
 };
 
 const PUSH_CHUNK = 200;
+const PAGE_SIZE = 1000;
+const MAX_PAGES = 50;

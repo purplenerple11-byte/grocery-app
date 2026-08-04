@@ -1137,8 +1137,9 @@ async function ensureSync() {
     getLocal: async () => ({
       // RAM wins over storage: commit() renders before it persists, so a pull
       // reading storage alone could overwrite an edit already on screen.
+      // Storage supplies the tombstones, which `state` deliberately never holds.
       items: Store.overlayLocal(await DB.getAll(), state.items),
-      meals: state.meals
+      meals: Store.overlayLocal(await DB.getSetting('meals', []), state.meals)
     }),
     onStatus: renderSyncPanel,
     onSnapshot: applySnapshot
