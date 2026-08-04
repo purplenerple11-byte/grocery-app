@@ -203,8 +203,11 @@ begin
   if uid is null then raise exception 'not authenticated'; end if;
   select household_id into hid from public.household_members where user_id = uid limit 1;
   if hid is null then raise exception 'no household'; end if;
+  -- Schema-qualified: pgcrypto lives in `extensions` on Supabase, and this
+  -- function pins search_path to public for safety, so an unqualified call
+  -- fails with 42883. gen_random_uuid() is unaffected — it is core Postgres.
   select string_agg(substr(alpha, 1 + (get_byte(b, i) % 32), 1), '')
-    into c from (select gen_random_bytes(10) as b) s, generate_series(0, 9) i;
+    into c from (select extensions.gen_random_bytes(10) as b) s, generate_series(0, 9) i;
   insert into public.household_invites (code, household_id, created_by) values (c, hid, uid);
   return c;
 end $$;
