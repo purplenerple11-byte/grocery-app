@@ -132,6 +132,64 @@ const Sync = {
     return true;
   },
 
+  get isAnonymous() {
+    return !!(Sync.session && Sync.session.user && Sync.session.user.is_anonymous);
+  },
+
+  /* Join with nothing but a code — no email, no inbox round trip.
+
+     This exists because the built-in mailer allows 2 emails an hour on the
+     free tier, which is the real ceiling on how many household members can be
+     onboarded in an evening. An anonymous user is a full user: real id, the
+     `authenticated` role, and therefore exactly the same RLS treatment. It is
+     NOT the `anon` API key, and it widens nothing — every policy resolves
+     through my_household_ids(), so a session with no membership sees zero rows.
+
+     Order matters: sign in FIRST, then redeem. Validating a code before
+     authenticating would require an endpoint callable by unauthenticated
+     users, which is a code-validity oracle — exactly what makes brute forcing
+     cheap. This way an attacker pays for an anonymous session (rate limited
+     per IP) before they can even guess.
+
+     The tradeoff to be honest about: an anonymous identity lives in one
+     browser's storage. Clear site data or switch phones and it is gone, and
+     they need a fresh invite. Nothing is lost — the data is in the household —
+     but the identity is not recoverable. */
+  async joinWithCode(code) {
+    const clean = String(code || '').replace(/[^0-9A-Za-z]/g, '').toUpperCase();
+    if (clean.length !== 10) throw new Error('An invite code is 10 characters.');
+
+    const hadSession = !!Sync.session;
+    if (!hadSession) {
+      Sync._set('syncing');
+      const { data, error } = await Sync.client.auth.signInAnonymously();
+      if (error) {
+        Sync._fail(error);
+        throw new Error(error.message === 'Anonymous sign-ins are disabled'
+          ? 'Code sign-in is not enabled on the server yet.'
+          : error.message);
+      }
+      Sync.session = data.session;
+    }
+
+    try {
+      const hid = await Sync._rpcToHousehold('redeem_invite', { p_code: clean });
+      /* Claim the seed decision immediately, before any trigger can fire.
+         boot / visibilitychange / online can all call sync() between the join
+         landing and the user answering the adopt question, and seedFromLocal
+         would happily upload this device's list into someone else's household
+         in that window. Stamping the flag here means the default is "don't",
+         and adoptHousehold('merge') opts back in explicitly. */
+      await DB.putSetting('sync.seededHouseholdId', hid);
+      return hid;
+    } catch (e) {
+      // Don't strand a brand-new anonymous session with no household — it would
+      // sit in `choosing` forever with no way to recover.
+      if (!hadSession) await Sync.signOut().catch(() => {});
+      throw e;
+    }
+  },
+
   /* Signing out stops sync; it does NOT delete anything local. The app keeps
      working exactly as it did before anyone signed in. */
   async signOut() {
@@ -152,6 +210,46 @@ const Sync = {
     const clean = String(code || '').replace(/[^0-9A-Za-z]/g, '').toUpperCase();
     if (clean.length !== 10) throw new Error('An invite code is 10 characters.');
     return Sync._rpcToHousehold('redeem_invite', { p_code: clean });
+  },
+
+  /* Decides what happens to a joining device's existing list. MUST be called
+     after a successful join and before any sync, because the ordinary seed
+     path assumes this device's data IS the household's data — true when you
+     start one, badly wrong when you join one. Skipping this is what pushed a
+     second copy of 137 items into an already-populated household.
+
+     Either way `sync.seededHouseholdId` is stamped, which makes seedFromLocal
+     a no-op from here on. */
+  async adoptHousehold(mode) {
+    if (!Sync.householdId) throw new Error('Not in a household yet.');
+
+    if (mode === 'replace') {
+      // Wipe local outright. Leaving it in place would not be a no-op: the
+      // reconciler folds remote into local and keeps local-only records, so
+      // the discarded list would quietly reappear as household data.
+      await DB.applyPull({ items: [], meals: [], cursor: null });
+    } else if (mode === 'merge') {
+      // Explicit opt-in: joinWithCode already stamped seededHouseholdId to stop
+      // this happening by accident, so the records are enqueued by hand.
+      const items = await DB.getAll();
+      const meals = await DB.getSetting('meals', []);
+      await DB.enqueueMany([
+        ...items.map((i) => ({ kind: 'item', id: i.id })),
+        ...meals.map((m) => ({ kind: 'meal', id: m.id }))
+      ]);
+    } else {
+      throw new Error(`Unknown adopt mode: ${mode}`);
+    }
+
+    await DB.putSetting('sync.seededHouseholdId', Sync.householdId);
+    return Sync.sync();
+  },
+
+  /* True when this device has a list that a join would otherwise merge in
+     uninvited. Lets the UI ask only when the question is real. */
+  async hasLocalData() {
+    if ((await DB.getAll()).some((r) => !r.deletedAt)) return true;
+    return (await DB.getSetting('meals', [])).some((m) => !m.deletedAt);
   },
 
   async _rpcToHousehold(fn, args) {

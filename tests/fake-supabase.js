@@ -2,7 +2,7 @@
    exposing ONLY the surface sync.js is allowed to use (the list is pinned in a
    comment at the top of sync.js). Because Sync.init takes the client as a
    parameter, this drives the real engine with no network. */
-function makeFakeSupabase({ items = [], meals = [], households = [], household = 'h1', session = { user: { id: 'u1', email: 'a@b.c' } }, fail = null } = {}) {
+function makeFakeSupabase({ items = [], meals = [], households = [], household = 'h1', session = { user: { id: 'u1', email: 'a@b.c' } }, fail = null, anonDisabled = false, rpcFail = null } = {}) {
   const tables = { items: items.slice(), meals: meals.slice(), households: households.slice() };
   const calls = [];
 
@@ -32,11 +32,18 @@ function makeFakeSupabase({ items = [], meals = [], households = [], household =
       async getSession() { return { data: { session } }; },
       onAuthStateChange() { return { data: { subscription: { unsubscribe() {} } } }; },
       async signInWithOtp() { return { error: null }; },
+      async signInAnonymously() {
+        calls.push({ auth: 'signInAnonymously' });
+        if (anonDisabled) return { data: null, error: { message: 'Anonymous sign-ins are disabled' } };
+        const s = { user: { id: 'anon-1', is_anonymous: true } };
+        return { data: { session: s }, error: null };
+      },
       async signInWithOAuth() { return { error: null }; },
       async signOut() { return { error: null }; }
     },
     async rpc(name) {
       calls.push({ rpc: name });
+      if (rpcFail) return { data: null, error: rpcFail };
       if (fail) return { data: null, error: fail };
       return { data: household, error: null };
     },

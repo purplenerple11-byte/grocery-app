@@ -1247,11 +1247,28 @@ function renderSyncPanel(s) {
   const typedEmail = (document.getElementById('sync-email') || {}).value || '';
 
   if (st.status === 'off' || st.status === 'signed-out') {
+    /* Code first: joining a household is the common case (one person starts
+       it, everyone else is invited), and it needs no email at all — which
+       matters because the built-in mailer allows 2 messages an hour. */
     body.innerHTML = `
       <p class="dialog-note">Your list stays on this device until you sign in.</p>
-      <input type="email" id="sync-email" placeholder="you@example.com" autocomplete="email" value="${escapeHtml(typedEmail)}">
-      <button id="sync-email-btn" class="btn-clay">Send sign-in link</button>
-      <button id="sync-google-btn">Continue with Google</button>
+      <input type="text" id="sync-code" placeholder="Invite code" maxlength="13" autocapitalize="characters" autocomplete="off">
+      <button id="sync-join-code-btn" class="btn-clay">Join with code</button>
+      <details id="sync-email-more">
+        <summary>Sign in with email instead</summary>
+        <input type="email" id="sync-email" placeholder="you@example.com" autocomplete="email" value="${escapeHtml(typedEmail)}">
+        <button id="sync-email-btn">Send sign-in link</button>
+        <button id="sync-google-btn">Continue with Google</button>
+      </details>
+      <p class="sync-error" id="sync-error" hidden></p>`;
+    return;
+  }
+  if (st.status === 'adopting') {
+    body.innerHTML = `
+      <p class="dialog-note">You're in. This device already has its own list — what should happen to it?</p>
+      <button id="sync-adopt-replace" class="btn-clay">Use the household's list</button>
+      <button id="sync-adopt-merge">Add my items to the household</button>
+      <p class="dialog-note">Replacing discards what's on this device. Adding pushes it to everyone.</p>
       <p class="sync-error" id="sync-error" hidden></p>`;
     return;
   }
@@ -1285,6 +1302,16 @@ function renderSyncPanel(s) {
     <p class="sync-error" id="sync-error" hidden></p>`;
 }
 
+/* After joining, only ask about the local list if there IS one. An empty
+   device — the normal case for someone installing fresh — just syncs. */
+async function offerAdoption() {
+  if (await Sync.hasLocalData()) {
+    renderSyncPanel({ ...Sync.snapshotStatus(), status: 'adopting' });
+  } else {
+    await Sync.adoptHousehold('replace');
+  }
+}
+
 /* Delegated so the panel can re-render freely without rebinding. */
 document.getElementById('settings-dialog').addEventListener('click', async (e) => {
   const id = e.target.id;
@@ -1309,9 +1336,16 @@ document.getElementById('settings-dialog').addEventListener('click', async (e) =
       scheduleSync(0);   // this device's data becomes the household's seed
     } else if (id === 'sync-join-btn') {
       document.getElementById('sync-join-row').hidden = false;
-    } else if (id === 'sync-redeem-btn') {
-      await Sync.redeemInvite(document.getElementById('sync-code').value);
-      scheduleSync(0);
+    } else if (id === 'sync-join-code-btn' || id === 'sync-redeem-btn') {
+      await ensureSync();
+      await Sync.joinWithCode(document.getElementById('sync-code').value);
+      // Deliberately NOT scheduleSync: a joining device must decide what
+      // happens to its own list first, or the seed silently uploads it.
+      await offerAdoption();
+    } else if (id === 'sync-adopt-replace') {
+      await Sync.adoptHousehold('replace');
+    } else if (id === 'sync-adopt-merge') {
+      await Sync.adoptHousehold('merge');
     } else if (id === 'sync-retry-btn') {
       await Sync.init({ client: sbClient, getLocal: Sync._getLocal, onStatus: renderSyncPanel, onSnapshot: applySnapshot });
     } else if (id === 'sync-invite-btn') {

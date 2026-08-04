@@ -108,6 +108,12 @@ button { font-family: var(--sans); cursor: pointer; }
 #sync-panel .pill { margin-bottom: 6px; }
 /* Sits inside the dialog because a modal dialog's top layer beats any z-index
    the page banner could use. Sienna is the established "out"/problem hue. */
+/* The email path is folded away: joining with a code is the common case, and
+   the built-in mailer allows only 2 messages an hour, so email should not be
+   the thing a new member reaches for first. */
+#sync-email-more { margin-top: 10px; }
+#sync-email-more summary { font-size: 13px; color: var(--muted); cursor: pointer; padding: 4px 0; }
+#sync-email-more[open] summary { margin-bottom: 6px; }
 .sync-error { font-size: 13px; color: var(--out); margin-top: 8px; }
 .sync-error[hidden] { display: none; }
 #inv-add { margin-left: auto; font-size: 12px; color: var(--ink); background: none; border: 1px solid var(--hairline); border-radius: 999px; padding: 3px 10px; }

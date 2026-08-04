@@ -1230,3 +1230,107 @@ test('recordTrip stamps the household so the other device can see it', async () 
   assert(client._tables.households[0].last_trip_at, 'timestamp written');
   resetSync();
 });
+
+/* ── Code-only join, and what happens to a joining device's own list ── */
+
+async function joinFixture(opts = {}) {
+  if (DB._db) { DB._db.close(); DB._db = null; }
+  await new Promise((res) => { const r = indexedDB.deleteDatabase('grocery-join'); r.onsuccess = r.onerror = r.onblocked = res; });
+  await DB.init('grocery-join');
+  const client = makeFakeSupabase({ session: null, ...opts });
+  await Sync.init({
+    client,
+    getLocal: async () => ({
+      items: Store.overlayLocal(await DB.getAll(), []),
+      meals: await DB.getSetting('meals', [])
+    }),
+    onStatus: () => {},
+    onSnapshot: (s) => { Sync._lastSnapshot = s; }
+  });
+  return client;
+}
+
+test('join with a code signs in anonymously — no email involved', async () => {
+  const client = await joinFixture();
+  assertEqual(Sync.status, 'signed-out');
+
+  const hid = await Sync.joinWithCode('6rx5-jcrt at');   // messy input is normalised
+  assertEqual(hid, 'h1');
+  assertEqual(Sync.isAnonymous, true, 'a real user, just without an email');
+  assertEqual(Sync.enabled, true);
+  assert(client._calls.some((c) => c.auth === 'signInAnonymously'), 'signed in anonymously');
+  assert(client._calls.some((c) => c.rpc === 'redeem_invite'), 'then redeemed');
+  resetSync();
+});
+
+test('join rejects a malformed code before touching the network', async () => {
+  const client = await joinFixture();
+  let threw = null;
+  try { await Sync.joinWithCode('ABC'); } catch (e) { threw = e.message; }
+  assert(/10 characters/.test(threw || ''), threw);
+  assertEqual(client._calls.length, 0, 'no anonymous user created for an obviously bad code');
+  resetSync();
+});
+
+test('a bad code does not strand a new anonymous session', async () => {
+  await joinFixture({ rpcFail: { message: 'invalid or expired invite' } });
+  let threw = null;
+  try { await Sync.joinWithCode('AAAAAAAAAA'); } catch (e) { threw = e.message; }
+  assert(/invalid or expired/.test(threw || ''), threw);
+  assertEqual(Sync.session, null, 'signed back out rather than sitting in limbo forever');
+  assertEqual(Sync.householdId, null);
+  resetSync();
+});
+
+test('join reports clearly when anonymous sign-in is switched off server-side', async () => {
+  await joinFixture({ anonDisabled: true });
+  let threw = null;
+  try { await Sync.joinWithCode('AAAAAAAAAA'); } catch (e) { threw = e.message; }
+  assert(/not enabled on the server/.test(threw || ''), threw);
+  resetSync();
+});
+
+test('adopt=replace discards the joining device list instead of uploading it', async () => {
+  const client = await joinFixture();
+  await DB.replaceAllWithMeals([Store.createItem('My Own Milk', { id: 'mine' })], []);
+  await DB.putSetting('meals', [Store.createMeal('My Meal', ['mine'], { id: 'mymeal' })]);
+  await Sync.joinWithCode('AAAAAAAAAA');
+
+  assertEqual(await Sync.hasLocalData(), true, 'there is something to ask about');
+  await Sync.adoptHousehold('replace');
+
+  assertEqual(client._tables.items.length, 0, 'the joiner never uploaded their list');
+  assertEqual((await DB.getAll()).length, 0, 'and it is gone locally, not lurking');
+  assertEqual(await DB.getSetting('sync.seededHouseholdId'), 'h1', 'seeding can never fire later');
+  resetSync();
+});
+
+test('adopt=merge uploads the joining device list on purpose', async () => {
+  const client = await joinFixture();
+  await DB.replaceAllWithMeals([Store.createItem('My Own Milk', { id: 'mine' })], []);
+  await Sync.joinWithCode('AAAAAAAAAA');
+  await Sync.adoptHousehold('merge');
+
+  assertEqual(client._tables.items.length, 1, 'uploaded because the user asked for it');
+  assertEqual(client._tables.items[0].name, 'My Own Milk');
+  resetSync();
+});
+
+test('a join never auto-seeds — the duplication bug this fixes', async () => {
+  const client = await joinFixture();
+  await DB.replaceAllWithMeals([Store.createItem('My Own Milk', { id: 'mine' })], []);
+  await Sync.joinWithCode('AAAAAAAAAA');
+
+  // Whatever else happens, a plain sync() before the user has chosen must not
+  // push this device's list into someone else's household.
+  await Sync.sync();
+  assertEqual(client._tables.items.length, 0, 'seeding is not the default on a join');
+  resetSync();
+});
+
+test('an empty joining device needs no question at all', async () => {
+  await joinFixture();
+  await Sync.joinWithCode('AAAAAAAAAA');
+  assertEqual(await Sync.hasLocalData(), false, 'nothing to ask about, so the UI skips the prompt');
+  resetSync();
+});
