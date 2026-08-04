@@ -275,6 +275,7 @@ dialog {
 dialog::backdrop { background: rgba(0, 0, 0, .55); }
 dialog h3 { font-size: 20px; margin-bottom: 12px; }
 dialog label, dialog .field { display: block; font-size: 12px; color: var(--muted); margin-bottom: 10px; }
+dialog .field { position: relative; z-index: 1; }
 dialog input:not([type="checkbox"]), dialog select {
   width: 100%; margin-top: 4px; background: var(--surface); border: 1px solid var(--hairline);
   border-radius: 8px; padding: 9px 10px; color: var(--ink);
@@ -298,9 +299,11 @@ dialog input:not([type="checkbox"]), dialog select {
 }
 .picker-btn[aria-expanded="true"]::after { transform: rotate(180deg); }
 .picker-list {
-  max-height: 38vh; overflow-y: auto; margin-top: 6px;
+  position: absolute; left: 0; right: 0; top: 100%; z-index: 10;
+  max-height: 38vh; overflow-y: auto; margin-top: 2px;
   border: 1px solid var(--hairline); border-radius: 8px;
   background: var(--surface); padding: 4px 0;
+  box-shadow: 0 6px 16px rgba(0,0,0,0.25);
 }
 .picker-list[hidden] { display: none; }
 .picker-row {
