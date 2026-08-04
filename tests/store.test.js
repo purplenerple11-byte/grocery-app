@@ -1191,3 +1191,42 @@ test('sync: sync() is single-flight', async () => {
   assertEqual(a, b, 'concurrent triggers share one run rather than racing the outbox');
   resetSync();
 });
+
+test('trip guard: another member completing a trip is detected', async () => {
+  const recent = { id: 'h1', last_trip_at: new Date(Date.now() - 30000).toISOString(), last_trip_by: 'someone-else' };
+  await syncFixture({ households: [recent] });
+  assertEqual(await Sync.recentTripByOther(), true, 'a trip 30s ago by another member blocks a second restock');
+  resetSync();
+});
+
+test('trip guard: my own trip does not block me', async () => {
+  const mine = { id: 'h1', last_trip_at: new Date(Date.now() - 30000).toISOString(), last_trip_by: 'u1' };
+  await syncFixture({ households: [mine] });
+  assertEqual(await Sync.recentTripByOther(), false);
+  resetSync();
+});
+
+test('trip guard: an old trip does not block, and no trip does not block', async () => {
+  await syncFixture({ households: [{ id: 'h1', last_trip_at: new Date(Date.now() - 3600000).toISOString(), last_trip_by: 'x' }] });
+  assertEqual(await Sync.recentTripByOther(), false, 'an hour ago is not a double-tap');
+  resetSync();
+
+  await syncFixture({ households: [{ id: 'h1', last_trip_at: null, last_trip_by: null }] });
+  assertEqual(await Sync.recentTripByOther(), false);
+  resetSync();
+});
+
+test('trip guard: never blocks a trip just because the network failed', async () => {
+  await syncFixture({ fail: { message: 'network down' } });
+  Sync.householdId = 'h1'; Sync.session = { user: { id: 'u1' } };
+  assertEqual(await Sync.recentTripByOther(), false, 'a safety prompt must not become a blocker');
+  resetSync();
+});
+
+test('recordTrip stamps the household so the other device can see it', async () => {
+  const client = await syncFixture({ households: [{ id: 'h1', last_trip_at: null, last_trip_by: null }] });
+  await Sync.recordTrip();
+  assertEqual(client._tables.households[0].last_trip_by, 'u1');
+  assert(client._tables.households[0].last_trip_at, 'timestamp written');
+  resetSync();
+});

@@ -8,10 +8,21 @@ web
 
 ## Users
 
-One person — the owner — using the app on their own phone. There is no second
-audience: no admin, no household member, no guest. The owner is simultaneously
-the shopper, the person who restocks the kitchen, and the person who decides
-what the product becomes.
+A **household** — the owner plus anyone they invite — sharing one pantry, one
+list, and one set of meals. Everyone is the same kind of user: there is no
+admin, no guest, and no read-only role. The owner is still the person who
+decides what the product becomes.
+
+This changed on 2026-08-04. The previous text said "one person… no household
+member, no guest," which the earlier spec had also stated as permanent. It was
+superseded deliberately, not drifted into: sync was built because the owner
+asked for it. Anyone reading an older doc that says otherwise should treat this
+section as the current truth.
+
+Household size is small and trusted — the people you share a kitchen with.
+Membership is by invite code, and every member has full read/write on
+everything. There is no permission model because there is no adversary inside
+a household.
 
 They use it in four distinct situations, all confirmed:
 
@@ -53,8 +64,9 @@ the moment of truth (checkout) is also the moment of data capture.
   worker needs http, not `file://`).
 - Tests run in a browser at `tests/run-tests.html`; use exactly one tab, since a
   second tab holds IndexedDB open and hangs the DB tests.
-- Data lives only on the device. JSON export/import is the only backup, and the
-  only way data moves between devices.
+- Data lives on the device first. Signed in, it also syncs to the household via
+  Supabase; signed out, the app is exactly what it always was. JSON
+  export/import remains the backup and the way data moves without an account.
 - **Handing the pantry to an AI is a real part of the workflow.** "Export
   pantry" writes just what's in stock, in a compact shape meant to be given to
   an assistant to answer "what can I cook?". It is a one-way hand-off, not a
@@ -101,10 +113,8 @@ shell.
 
 **Explicitly undecided:**
 
-- **Single-device is current, not permanent.** Today there are no accounts, no
-  backend, and no sync, and none are planned. But the owner has flagged that a
-  second device or sync is a plausible future direction — future work should not
-  foreclose it. Treat local-only as today's constraint, not a principle.
+- **Resolved: sync exists.** This entry used to say single-device was current
+  but not permanent. It was acted on — see "Sync" in `HANDOFF.md`.
 - Categories are described in the spec as user-extendable, but editing an item
   whose category is outside `Store.CATEGORY_ORDER` still resets it to "Other".
 - AI-generated *meals* carrying throwaway ids are not remapped on merge import.

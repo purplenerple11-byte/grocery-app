@@ -15,7 +15,81 @@ that restocks inventory by the quantity you actually bought.
 - **Deployed:** GitHub Pages → https://purplenerple11-byte.github.io/grocery-app/
   Repo `github.com/purplenerple11-byte/grocery-app`, branch `main`.
   Pages deploys from `main` root — **pushing to main publishes it** (~1 min).
-- **Single user, single device.** No accounts, no backend, no sync. Not planned.
+- **Household sync (built 2026-08-04).** Supabase Postgres + RLS behind
+  magic-link auth. IndexedDB is still the read source of truth and the app is
+  fully usable signed-out and offline; the network is a background reconciler.
+  Schema and policies live in `supabase/schema.sql`. See "Sync" below.
+
+## Sync (V6, built 2026-08-04)
+
+Supabase Postgres + RLS behind magic-link auth. Schema, policies and RPCs are
+in `supabase/schema.sql` — committed, not left in a dashboard.
+
+**Shape.** IndexedDB stays the read source of truth; the network is a
+background reconciler. Signed out, the app is byte-for-byte what it always was
+and never even downloads the client. `assets/sync.js` holds the engine and
+touches no DOM; the client is injected at `Sync.init` so tests drive the real
+engine against `tests/fake-supabase.js` with no network.
+
+**Decisions that are load-bearing — don't undo these casually:**
+
+- **Deletes are tombstones** (`deletedAt`), filtered at exactly one boundary
+  (boot and snapshot-apply). `state.items`/`state.meals` never contain one, so
+  no render, lookup, export or merge path knows they exist. Hard-deleting makes
+  a delete invisible to other devices, which resurrects the record on the next
+  pull.
+- **`updatedAt` is monotonic per record** (`Store.nextStamp`). Without the
+  clamp, a device with a fast clock wins every conflict forever, silently.
+- **Two clocks.** `client_updated_at` resolves conflicts; the server's
+  `updated_at` is trigger-stamped and used only as the pull cursor. A client
+  must never write it — one wrong device clock would poison every other
+  device's cursor.
+- **`DB.replaceLiveWithMeals`** exists because bulk writes pass `state.items`,
+  which excludes tombstones; a plain clear-and-rewrite erased every pending
+  delete on each completed trip.
+- **`pruneMeals` must not run against the live item set.** It used to, in
+  `boot()` and `removeItems()`, and persisted the result — which strips a
+  not-yet-synced item out of its meals household-wide. It is now only used on
+  self-contained file imports.
+- **The outbox is a dirty-key set, not an op log.** Record and outbox entry are
+  written in ONE transaction. `outboxRemove` drops only entries whose
+  `queuedAt` is unchanged, so an edit made mid-push survives. Never `clear()`.
+- **A merge that would remove more than half the local items is refused.** A
+  reconciler bug does not throw; it returns a smaller plausible set that then
+  propagates looking correct.
+
+**Known and accepted limitations:**
+
+- **`stock`/`listQty` are counters under last-write-wins.** Two people each
+  tapping +1 loses one increment. A PN-counter is the correct fix and was
+  judged not worth breaking the one-row-per-item model for.
+- **Row-level LWW can un-check an item mid-trip.** A whole-row write from a
+  stale device overwrites `checked`. Per-field timestamps would fix it.
+- **Focus-only sync, by the owner's choice.** Triggers are boot,
+  `visibilitychange`→visible, and `online` — no polling, no realtime. While
+  shopping the app stays foregrounded, so none of them fire and the list can go
+  stale for the whole trip. Two people splitting aisles will duplicate
+  purchases. Adding a poll is one condition on `scheduleSync`; adding realtime
+  is one `client.channel(...)` call that invokes the existing `pull()`.
+- **Trip completion is guarded, not serialised.** It pulls first, checks
+  `households.last_trip_at`, and banners if another member finished within two
+  minutes. That covers the realistic case, not a true race.
+- **A departing member keeps their local copy.** Removing their membership
+  stops future sync; it cannot reach back.
+- **Tombstones purge locally after 90 days.** A device offline longer than that
+  can resurrect what it never saw deleted.
+
+**Security.** The publishable key is public by design and safe *only* because
+RLS is on for all five tables and every policy is `to authenticated`, with
+`anon` revoked outright. Verified against the live project: anonymous select,
+insert and RPC all return `42501`. The `service_role` key must never enter the
+repo — that is also why invites are codes rather than emails.
+
+**Outstanding:** the app is still on GitHub Pages, where `*.github.io` is one
+origin shared by every repo on the account and `localStorage` is per-origin —
+so any other Pages site under this account could read the session token. The
+plan is to move to Cloudflare Pages, which gives the app its own origin. Until
+then, do not publish untrusted code to another repo on this account.
 
 ## Layout
 

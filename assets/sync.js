@@ -247,6 +247,38 @@ const Sync = {
     }
   },
 
+  // ---- trip coordination ----
+
+  /* Was a trip completed by SOMEONE ELSE within the guard window? Used to stop
+     a second member double-restocking the whole list. Failures here are
+     deliberately swallowed: this is a safety prompt, and it must never be the
+     reason a trip cannot be completed. */
+  async recentTripByOther() {
+    if (!Sync.enabled) return false;
+    try {
+      const { data, error } = await Sync.client.from('households')
+        .select('last_trip_at,last_trip_by').eq('id', Sync.householdId).limit(1);
+      if (error || !data || !data.length) return false;
+      const row = data[0];
+      if (!row.last_trip_at) return false;
+      const mine = Sync.session && Sync.session.user && Sync.session.user.id;
+      if (row.last_trip_by && mine && row.last_trip_by === mine) return false;
+      return Date.now() - Date.parse(row.last_trip_at) < TRIP_GUARD_MS;
+    } catch (e) {
+      return false;
+    }
+  },
+
+  async recordTrip() {
+    if (!Sync.enabled) return;
+    const mine = Sync.session && Sync.session.user ? Sync.session.user.id : null;
+    try {
+      await Sync.client.from('households')
+        .update({ last_trip_at: new Date().toISOString(), last_trip_by: mine })
+        .eq('id', Sync.householdId);
+    } catch (e) { /* advisory only */ }
+  },
+
   // ---- pull ----
 
   /* Fetches everything changed since the cursor, reconciles it against the
@@ -353,6 +385,8 @@ const Sync = {
      racing each other through the same outbox. Push before pull, so local
      work is on the server before its copy comes back. */
   _inFlight: null,
+  _failures: 0,
+  _retryTimer: null,
   sync() {
     if (Sync._inFlight) return Sync._inFlight;
     Sync._inFlight = (async () => {
@@ -360,15 +394,32 @@ const Sync = {
         await Sync.seedFromLocal();
         const pushed = await Sync.push();
         const pulled = await Sync.pull();
+        const failed = !!(pushed.error || pulled.error);
+        if (failed) Sync._scheduleRetry(); else Sync._failures = 0;
         return { pushed, pulled };
       } finally {
         Sync._inFlight = null;
       }
     })();
     return Sync._inFlight;
+  },
+
+  /* Retries on a widening schedule, and only tells the user once the problem
+     looks persistent — a phone in a shop dips offline constantly and a banner
+     for every dip would be noise, not information. */
+  _scheduleRetry() {
+    Sync._failures++;
+    if (Sync._retryTimer) clearTimeout(Sync._retryTimer);
+    const wait = BACKOFF_MS[Math.min(Sync._failures - 1, BACKOFF_MS.length - 1)];
+    Sync._retryTimer = setTimeout(() => { Sync._retryTimer = null; Sync.sync(); }, wait);
+    if (Sync._failures === 3) Sync._onStatus({ ...Sync.snapshotStatus(), persistentFailure: true });
   }
 };
 
 const PUSH_CHUNK = 200;
 const PAGE_SIZE = 1000;
 const MAX_PAGES = 50;
+const TRIP_GUARD_MS = 2 * 60 * 1000;
+/* Retry schedule after a failed sync. Caps at 5 minutes: the app works fine
+   offline, so there is nothing to gain from hammering a dead network. */
+const BACKOFF_MS = [5000, 15000, 60000, 300000];

@@ -314,7 +314,30 @@ document.getElementById('list').addEventListener('click', (e) => {
 
 /* Completing a trip opens the price-capture dialog; finishing it there is what
    actually restocks. Only tracked items keep history, so only they get a row. */
-document.getElementById('complete-trip').addEventListener('click', () => {
+/* Completing a trip is the largest-blast-radius write in the app and it is not
+   idempotent: it adds listQty to stock for every checked item at once. If two
+   members both tap it, both devices restock and last-write-wins silently keeps
+   one — so the household is either double-stocked or missing a restock, across
+   the whole list.
+
+   Pulling first is most of the fix: whoever finishes second sees an already
+   emptied list and has nothing to complete. The banner covers the rest, where
+   the other trip landed too recently for the list to have caught up. */
+document.getElementById('complete-trip').addEventListener('click', async () => {
+  if (typeof Sync !== 'undefined' && Sync.enabled) {
+    await Sync.sync();
+    const recent = await Sync.recentTripByOther();
+    if (recent) {
+      showBanner('Someone else just completed a trip. Check the list before restocking again.');
+      render();
+      return;
+    }
+    if (!state.items.some((it) => it.onList && it.checked)) {
+      showBanner('That trip was already completed on another device.');
+      render();
+      return;
+    }
+  }
   const bought = state.items.filter((it) => it.onList && it.checked && it.tracked);
   document.getElementById('store-names').innerHTML =
     Store.storeNames(state.items).map((s) => `<option value="${escapeHtml(s)}">`).join('');
@@ -346,6 +369,7 @@ document.getElementById('trip-form').addEventListener('submit', async (e) => {
   document.getElementById('trip-dialog').close();
   // completeTrip drops bought one-offs entirely; commitAll tombstones them.
   if (!await commitAll(restocked)) showBanner('Save failed — changes may not persist.');
+  if (typeof Sync !== 'undefined' && Sync.enabled) Sync.recordTrip();
 });
 
 /* sheet open/close: tap the bar, or swipe it up/down */

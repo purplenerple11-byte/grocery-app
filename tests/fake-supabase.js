@@ -2,8 +2,8 @@
    exposing ONLY the surface sync.js is allowed to use (the list is pinned in a
    comment at the top of sync.js). Because Sync.init takes the client as a
    parameter, this drives the real engine with no network. */
-function makeFakeSupabase({ items = [], meals = [], household = 'h1', session = { user: { email: 'a@b.c' } }, fail = null } = {}) {
-  const tables = { items: items.slice(), meals: meals.slice() };
+function makeFakeSupabase({ items = [], meals = [], households = [], household = 'h1', session = { user: { id: 'u1', email: 'a@b.c' } }, fail = null } = {}) {
+  const tables = { items: items.slice(), meals: meals.slice(), households: households.slice() };
   const calls = [];
 
   function query(table) {
@@ -43,6 +43,18 @@ function makeFakeSupabase({ items = [], meals = [], household = 'h1', session = 
     from(table) {
       return {
         select: () => query(table).select(),
+        update(patch) {
+          calls.push({ update: table, patch });
+          const u = {
+            eq(col, val) {
+              if (!fail) {
+                for (const r of tables[table] || []) if (r[col] === val) Object.assign(r, patch);
+              }
+              return Promise.resolve({ data: null, error: fail });
+            }
+          };
+          return u;
+        },
         upsert(rows, opts) {
           calls.push({ upsert: table, count: rows.length, opts });
           if (fail) return Promise.resolve({ data: null, error: fail });
