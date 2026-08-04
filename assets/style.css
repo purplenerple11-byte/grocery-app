@@ -327,7 +327,10 @@ dialog input:not([type="checkbox"]), dialog select {
 .picker-row input:checked ~ .picker-check::after { transform: scale(1); }
 .picker-row input:focus-visible ~ .picker-check { outline: 2px solid var(--clay); outline-offset: 2px; }
 .picker-name { font-family: var(--serif); font-size: 16px; color: var(--ink); }
-.picker-new { color: var(--muted); font-family: var(--serif); font-size: 15px; }
+.picker-new {
+  width: 100%; background: none; border: none; border-top: 1px solid var(--hairline);
+  color: var(--muted); font-family: var(--serif); font-size: 16px; text-align: left;
+}
 dialog menu { display: flex; flex-direction: column; gap: 8px; margin-top: 14px; padding: 0; list-style: none; }
 .dialog-note { font-size: 12px; color: var(--muted); margin: -6px 0 12px; }
 
