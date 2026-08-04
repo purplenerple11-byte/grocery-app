@@ -31,7 +31,7 @@ button { font-family: var(--sans); cursor: pointer; }
 #add-form { padding: 8px 16px 4px; }
 #add-input {
   width: 100%; background: var(--surface); border: 1px solid var(--hairline);
-  border-radius: 12px; padding: 11px 14px; color: var(--ink); font-size: 15px;
+  border-radius: 12px; padding: 11px 14px; color: var(--ink); font-size: 16px; /* iOS zooms below 16px */
 }
 #add-input::placeholder { color: var(--muted); }
 
@@ -114,6 +114,8 @@ button { font-family: var(--sans); cursor: pointer; }
 #sync-email-more { margin-top: 10px; }
 #sync-email-more summary { font-size: 13px; color: var(--muted); cursor: pointer; padding: 4px 0; }
 #sync-email-more[open] summary { margin-bottom: 6px; }
+#sync-code { font-family: var(--sans); letter-spacing: .14em; text-transform: uppercase; }
+#sync-panel button[disabled] { opacity: .6; }
 .sync-error { font-size: 13px; color: var(--out); margin-top: 8px; }
 .sync-error[hidden] { display: none; }
 #inv-add { margin-left: auto; font-size: 12px; color: var(--ink); background: none; border: 1px solid var(--hairline); border-radius: 999px; padding: 3px 10px; }
@@ -275,7 +277,11 @@ dialog h3 { font-size: 20px; margin-bottom: 12px; }
 dialog label, dialog .field { display: block; font-size: 12px; color: var(--muted); margin-bottom: 10px; }
 dialog input:not([type="checkbox"]), dialog select {
   width: 100%; margin-top: 4px; background: var(--surface); border: 1px solid var(--hairline);
-  border-radius: 8px; padding: 8px 10px; color: var(--ink); font-size: 14px;
+  border-radius: 8px; padding: 9px 10px; color: var(--ink);
+  /* 16px is a functional minimum, not a taste call: iOS Safari zooms the whole
+     page whenever a focused input is smaller, which jerks the dialog around
+     mid-typing and cannot be undone without a manual pinch. */
+  font-size: 16px;
 }
 
 /* Category picker — replaces a <select> so the selection dots are ours to

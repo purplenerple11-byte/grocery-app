@@ -1243,8 +1243,10 @@ function renderSyncPanel(s) {
   panel.hidden = false;
   const st = s || (typeof Sync !== 'undefined' ? Sync.snapshotStatus() : { status: 'off' });
   // Anything half-typed must survive a re-render — an auth-state change can
-  // rebuild this panel mid-interaction.
+  // rebuild this panel mid-interaction, and retyping a 10-character code
+  // because the client finished loading is exactly the papercut being fixed.
   const typedEmail = (document.getElementById('sync-email') || {}).value || '';
+  const typedCode = (document.getElementById('sync-code') || {}).value || '';
 
   if (st.status === 'off' || st.status === 'signed-out') {
     /* Code first: joining a household is the common case (one person starts
@@ -1252,7 +1254,10 @@ function renderSyncPanel(s) {
        matters because the built-in mailer allows 2 messages an hour. */
     body.innerHTML = `
       <p class="dialog-note">Your list stays on this device until you sign in.</p>
-      <input type="text" id="sync-code" placeholder="Invite code" maxlength="13" autocapitalize="characters" autocomplete="off">
+      <input type="text" id="sync-code" placeholder="Invite code" maxlength="13"
+             autocapitalize="characters" autocomplete="one-time-code"
+             autocorrect="off" spellcheck="false" enterkeyhint="go" inputmode="text"
+             value="${escapeHtml(typedCode)}">
       <button id="sync-join-code-btn" class="btn-clay">Join with code</button>
       <details id="sync-email-more">
         <summary>Sign in with email instead</summary>
@@ -1302,6 +1307,43 @@ function renderSyncPanel(s) {
     <p class="sync-error" id="sync-error" hidden></p>`;
 }
 
+/* Locks a button for the duration of a request. A double-tap on "Join" would
+   otherwise start two anonymous sign-ins and leave an orphan user behind —
+   easy to do on a phone, where the first tap gives no feedback. */
+function busy(btn, label) {
+  if (!btn || btn.tagName !== 'BUTTON') return;
+  btn.disabled = true;
+  btn.dataset.idleLabel = btn.textContent;
+  btn.textContent = label;
+}
+function unbusy() {
+  document.querySelectorAll('#sync-panel button[disabled]').forEach((b) => {
+    b.disabled = false;
+    if (b.dataset.idleLabel) b.textContent = b.dataset.idleLabel;
+  });
+}
+
+/* The iOS keyboard shows Go/return rather than a visible submit, and reaching
+   for a button means dismissing the keyboard first. Enter submits instead. */
+document.getElementById('settings-dialog').addEventListener('keydown', (e) => {
+  if (e.key !== 'Enter') return;
+  const submit = { 'sync-code': 'sync-join-code-btn', 'sync-email': 'sync-email-btn' }[e.target.id];
+  if (!submit) return;
+  e.preventDefault();
+  const btn = document.getElementById(submit);
+  if (btn && !btn.disabled) btn.click();
+});
+
+/* Invite codes are uppercase and unambiguous by construction. Normalising as
+   the user types means what they see matches what gets sent, and iOS
+   autocorrect never gets a chance to "fix" a 10-character non-word. */
+document.getElementById('settings-dialog').addEventListener('input', (e) => {
+  if (e.target.id !== 'sync-code') return;
+  const start = e.target.selectionStart;
+  e.target.value = e.target.value.toUpperCase();
+  e.target.setSelectionRange(start, start);
+});
+
 /* After joining, only ask about the local list if there IS one. An empty
    device — the normal case for someone installing fresh — just syncs. */
 async function offerAdoption() {
@@ -1337,8 +1379,14 @@ document.getElementById('settings-dialog').addEventListener('click', async (e) =
     } else if (id === 'sync-join-btn') {
       document.getElementById('sync-join-row').hidden = false;
     } else if (id === 'sync-join-code-btn' || id === 'sync-redeem-btn') {
+      // Read BEFORE ensureSync, for the same reason as the email field:
+      // loading the client fires an auth-state change that re-renders this
+      // panel and replaces the input, so reading after it got an empty one
+      // and silently ate the first attempt.
+      const code = document.getElementById('sync-code').value;
+      busy(e.target, 'Joining…');
       await ensureSync();
-      await Sync.joinWithCode(document.getElementById('sync-code').value);
+      await Sync.joinWithCode(code);
       // Deliberately NOT scheduleSync: a joining device must decide what
       // happens to its own list first, or the seed silently uploads it.
       await offerAdoption();
@@ -1358,6 +1406,8 @@ document.getElementById('settings-dialog').addEventListener('click', async (e) =
     }
   } catch (err) {
     showSyncError(err.message || 'Sync action failed.');
+  } finally {
+    unbusy();
   }
 });
 
