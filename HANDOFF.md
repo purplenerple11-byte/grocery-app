@@ -301,6 +301,9 @@ the implementer where an item collides with existing code.
      (or pulling down from the top of the open sheet) follows the finger 1:1 in
      real-time with rubber-banding, velocity-based fling detection, and smooth
      spring snapping (`cubic-bezier(.25, 1, .5, 1)`).
+   - *Item creator attribution & display name:* Settings panel (`⚙`) includes a
+     "Your name" input field. Items display an italicized `by Name` label on the
+     shopping list, which smoothly fades out after 30 seconds of on-screen view time.
 
 4. ~~**Meal selection pre-flight modal**~~ (Built)
    - *Issue:* appending all meal components creates redundant purchases and forces
