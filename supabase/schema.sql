@@ -86,9 +86,25 @@ create index if not exists meals_household_updated on public.meals (household_id
 
 -- --------------------------------------------------------------- trigger ---
 
+-- Stamps the pull cursor, and enforces delete-wins-monotonic server-side.
+--
+-- The tombstone rule cannot live only in the client. `Sync.push()` is a blind
+-- upsert of whatever the outbox points at, and "delete wins" is applied in
+-- `Store.reconcileRecord`, i.e. on PULL. So a device holding a stale live copy
+-- re-pushes it and un-deletes a record another member just removed — observed
+-- 2026-08-05: a delete on the Mac was reverted 5 seconds later by the phone.
+--
+-- Same reasoning as `updated_at` itself: an invariant every client must respect
+-- belongs where no client can forge it.
 create or replace function public.stamp_updated_at()
 returns trigger language plpgsql as $$
-begin new.updated_at := now(); return new; end $$;
+begin
+  new.updated_at := now();
+  if TG_OP = 'UPDATE' and OLD.deleted_at is not null then
+    new.deleted_at := least(OLD.deleted_at, coalesce(new.deleted_at, OLD.deleted_at));
+  end if;
+  return new;
+end $$;
 
 drop trigger if exists items_stamp on public.items;
 create trigger items_stamp before insert or update on public.items
