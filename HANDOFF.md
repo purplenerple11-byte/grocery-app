@@ -24,8 +24,23 @@ that restocks inventory by the quantity you actually bought.
 
 ## Sync (V6, built 2026-08-04)
 
-Supabase Postgres + RLS behind magic-link auth. Schema, policies and RPCs are
+Supabase Postgres + RLS behind Supabase Auth. Schema, policies and RPCs are
 in `supabase/schema.sql` — committed, not left in a dashboard.
+
+**Joining is a code, not an email.** The primary path is
+`Sync.joinWithCode(code)`: anonymous sign-in (`signInAnonymously`) first, *then*
+`redeem_invite`. That order is deliberate — validating a code while
+unauthenticated would turn the RPC into a code-validity oracle. An anonymous
+user is a real `authenticated` user with an `is_anonymous` JWT claim, so every
+RLS policy applies to them unchanged; it is **not** the `anon` API key.
+Email magic link still exists behind a `<details>` in the sync panel, and
+Google OAuth is wired but needs a client configured in Google Cloud. Email was
+demoted because the free tier allows 2 magic links per hour, which is not
+enough to onboard a household in one sitting.
+
+**Anonymous Sign-Ins must stay enabled** in the Supabase dashboard
+(Authentication → Providers). If it is ever switched off, code-only join breaks
+for everyone and the only remaining path is the rate-limited email one.
 
 **Shape.** IndexedDB stays the read source of truth; the network is a
 background reconciler. Signed out, the app is byte-for-byte what it always was
@@ -59,6 +74,12 @@ engine against `tests/fake-supabase.js` with no network.
 - **A merge that would remove more than half the local items is refused.** A
   reconciler bug does not throw; it returns a smaller plausible set that then
   propagates looking correct.
+- **A join never auto-seeds.** `joinWithCode` stamps
+  `sync.seededHouseholdId` the moment the code is redeemed, before the user has
+  answered replace-or-merge. Without that, a boot or focus trigger could fire
+  `sync()` → `seedFromLocal()` in the gap and upload the joiner's list into the
+  household they were invited to. `Sync.adoptHousehold('replace' | 'merge')`
+  then either wipes local data or enqueues it through `Store.mergeImport`.
 
 **Known and accepted limitations:**
 
@@ -80,6 +101,35 @@ engine against `tests/fake-supabase.js` with no network.
   stops future sync; it cannot reach back.
 - **Tombstones purge locally after 90 days.** A device offline longer than that
   can resurrect what it never saw deleted.
+
+**⚠ `Store.deduplicateSnapshot` — read this before touching sync.** Added
+2026-08-04 (`0c249ab`) and running on *every* pull, inside `reconcileSnapshot`.
+It groups live items by trimmed lower-cased name, keeps the newest by
+`updatedAt`, sums `stock`, ORs `onList`/`checked`/`tracked`, unions `prices`,
+tombstones the losers, and remaps meal `itemIds` onto the survivor.
+
+It converges and it is idempotent (after one pass each name is unique, so the
+next pass is a no-op). But be clear about what it costs:
+
+- **It has no tests.** The suite is 123 passing, the same count as before it
+  landed. `CLAUDE.md` requires a test for every new `Store` function; this one
+  is the exception and should not stay one.
+- **Two genuinely different items that share a name are destroyed, silently.**
+  "Milk" (dairy) and "Milk" (oat, category Other) merge into one row whose
+  stock is the sum. There is no confirmation and no banner. This is the same
+  class of data loss the category rule in `CLAUDE.md` exists to prevent.
+- **Summing `stock` is a guess.** For import duplicates it over-counts; for a
+  true offline conflict it is closer to right than LWW. Neither is correct in
+  general.
+
+It was written to clean up the 137-item duplicate set from a bad "Add from
+file" import. That cleanup is done (server-side, via SQL — 139 live items, 0
+duplicates), so the function is now guarding against a case that has not
+recurred. Options, in order of preference: delete it and rely on the
+autocomplete + `mergeImport` name-matching that already prevent duplicates at
+the source; or keep it but gate it behind an explicit "Merge duplicates" button
+in Settings, so it is a user action rather than a silent side effect of every
+pull. Do not leave it running untested.
 
 **Security.** The publishable key is public by design and safe *only* because
 RLS is on for all five tables and every policy is `to authenticated`, with
@@ -167,13 +217,27 @@ python3 -m http.server 8000        # from repo root; service worker needs http
 4. **Never edit `icons/*.png` by hand** — regenerate via `python3 tools/make_icons.py`.
 5. **Git identity isn't configured** — commits carry a placeholder author
    (`Pig Ote <pigote@Hops.lan>`). User has been told; don't "fix" it silently.
+6. **`.github/` is in `.gitignore`.** `.github/workflows/supabase-keepalive.yml`
+   exists on disk and has never been pushed, so the Supabase free-tier
+   keep-alive cron **is not running** — the project will pause after a week of
+   inactivity and every device will show a sync error until someone opens the
+   dashboard. Shipping it needs two things: remove `.github/` from
+   `.gitignore`, and `gh auth refresh -h github.com -s workflow` (the current
+   token has `gist, read:org, repo` only, and GitHub rejects a push that adds a
+   workflow file without the `workflow` scope).
+7. **`grocery_attr_seen` grows without bound.** The attribution fade-out stores
+   one `localStorage` key per item id, first-seen timestamp, and never prunes.
+   Harmless at household scale, but it is not self-cleaning.
 
 ## Status
 
 **Shipped and live:** v1 (list, inventory sheet, trip loop, export/import, PWA),
 V2 (price + store history), V3 (saved meals), all five V4 items (merge import,
 sorting + new categories, UI/interaction tweaks, meal pre-flight modal,
-quick-add autocomplete), and V5's pantry export. 63 tests passing.
+quick-add autocomplete), V5's pantry export, and V6 household sync
+(code-based join, tombstones, outbox, reconciler). 123 tests passing —
+`Store.deduplicateSnapshot` is the one function with no coverage; see the
+warning in the Sync section.
 
 **Awaiting the user's real-device review of V3, V4-#1, and V4-#2.** Checklists
 were given. If they report a bug, that takes priority over new work.

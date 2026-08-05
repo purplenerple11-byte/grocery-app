@@ -80,7 +80,8 @@ trip-completion loop; price + store history per item; saved meals with a
 pre-flight modal for pruning; swipe-to-remove; collapsible inventory categories;
 autocomplete on the quick-add field; strict restore and additive merge import;
 JSON export; pantry export for AI meal suggestions; PWA install and offline
-shell.
+shell; household sync over Supabase, joined with an invite code and no email;
+a display name with per-item "added by" attribution that fades after 30s.
 
 **Technical constraints that are deliberate, not incidental:**
 
@@ -119,6 +120,10 @@ shell.
   whose category is outside `Store.CATEGORY_ORDER` still resets it to "Other".
 - AI-generated *meals* carrying throwaway ids are not remapped on merge import.
 - Export omits the `settings` key the spec mentions.
+- **Whether same-name items should auto-merge on sync.** `deduplicateSnapshot`
+  currently does it silently on every pull, which can destroy two legitimately
+  different items that happen to share a name. Undecided whether that should be
+  deleted or moved behind an explicit button. See `HANDOFF.md`.
 
 ## Brand Commitments
 
