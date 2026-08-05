@@ -224,8 +224,24 @@ python3 -m http.server 8000        # from repo root; service worker needs http
      return 'cleared'; })()
    ```
    then reload with a fresh `?v=N`. A `?v=N` alone does **not** bust the SW cache.
-   `python3 -m http.server` also sends no cache headers, so the browser caches
-   assets on its own.
+
+   **Clearing the service worker is not enough.** `python3 -m http.server` sends
+   no cache headers, so the browser caches every asset on its own — with zero
+   registrations and zero caches you can still be running yesterday's file. A
+   `?v=N` on the *page* does not revalidate its `<script>` sub-resources either,
+   so the one file you forgot is the one still stale. Refetch **every** file you
+   touched, then reload:
+   ```js
+   Promise.all(['/assets/sync.js','/assets/store.js','/tests/fake-supabase.js',
+                '/tests/store.test.js','/tests/harness.js']
+     .map((u) => fetch(u, { cache: 'reload' })))
+     .then(() => location.replace('/tests/run-tests.html?fresh=' + performance.now()));
+   ```
+   This bites in both directions and the false **pass** is the cheap one. On
+   2026-08-05 a stale `fake-supabase.js` produced a false *failure* that looked
+   exactly like a broken fix, and two rounds went into "fixing" working code.
+   Before trusting any red, confirm the loaded source is yours:
+   `/myNewThing/.test(Sync.sync.toString())`.
 2. **Synthetic clicks miss `#complete-trip`** — it's fixed-position and the sheet
    overlays it in hit-testing. Use `document.getElementById('complete-trip').click()`.
 3. **Long-press and swipe can't be simulated** reliably in automation. Call
@@ -251,6 +267,21 @@ python3 -m http.server 8000        # from repo root; service worker needs http
 7. **`grocery_attr_seen` grows without bound.** The attribution fade-out stores
    one `localStorage` key per item id, first-seen timestamp, and never prunes.
    Harmless at household scale, but it is not self-cleaning.
+8. **Adding a field to an item silently breaks every write.** `supabase/schema.sql`
+   is a committed **record, not a migration** — editing it changes nothing until
+   someone pastes it into the SQL editor. The moment `Store.toItemRow` puts a
+   new column name on the wire, PostgREST rejects every upsert with 400 until
+   that column exists on the live table. Reads keep working, so the app looks
+   fine.
+
+   **Any change to `toItemRow`/`toMealRow` needs its `alter table` run against
+   the live project in the same change.** There is no migration runner, no CI,
+   and the test suite cannot catch it — the fake client has whatever columns the
+   fake gives it, so the tests stay green while production is dead.
+
+   This is not hypothetical: it took household sync down for a full day on
+   2026-08-05. Full account, including why the status panel reported "synced"
+   throughout, is under "schema drift" in the Sync section.
 
 ## Status
 
