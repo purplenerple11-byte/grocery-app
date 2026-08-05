@@ -580,7 +580,97 @@ const Store = {
   reconcileSnapshot(local, remote) {
     const i = Store.reconcileRecords(local.items || [], remote.items || []);
     const m = Store.reconcileRecords(local.meals || [], remote.meals || []);
-    return { items: i.records, meals: m.records, toPush: { items: i.toPush, meals: m.toPush } };
+    const deduped = Store.deduplicateSnapshot(i.records, m.records);
+    return {
+      items: deduped.items,
+      meals: deduped.meals,
+      toPush: {
+        items: [...new Set([...i.toPush, ...deduped.toPush.items])],
+        meals: [...new Set([...m.toPush, ...deduped.toPush.meals])]
+      }
+    };
+  },
+
+  /* Merges items that share the exact same case-insensitive name (e.g. from offline conflicts).
+     Keeps the one with the newest updatedAt, folds stock/prices in, tombstones the rest,
+     and remaps any meals pointing at the dropped ids to the surviving id. */
+  deduplicateSnapshot(items, meals) {
+    const byName = new Map();
+    const toPushItems = [];
+    const idMap = {};
+    const outItems = [];
+
+    // Group live items by name
+    for (const it of items) {
+      if (it.deletedAt) {
+        outItems.push(it);
+        continue;
+      }
+      const key = it.name.trim().toLowerCase();
+      if (!byName.has(key)) {
+        byName.set(key, [it]);
+      } else {
+        byName.get(key).push(it);
+      }
+    }
+
+    // Merge duplicates
+    for (const group of byName.values()) {
+      if (group.length === 1) {
+        outItems.push(group[0]);
+        continue;
+      }
+      
+      // Sort newest first
+      group.sort((a, b) => (b.updatedAt || 0) - (a.updatedAt || 0));
+      const survivor = group[0];
+      let merged = { ...survivor };
+      
+      for (let i = 1; i < group.length; i++) {
+        const dup = group[i];
+        idMap[dup.id] = survivor.id;
+        
+        // Fold properties
+        merged.stock = (merged.stock || 0) + (dup.stock || 0);
+        merged.listQty = Math.max(merged.listQty || 1, dup.listQty || 1);
+        merged.onList = merged.onList || dup.onList;
+        merged.checked = merged.checked || dup.checked;
+        merged.tracked = merged.tracked || dup.tracked;
+        merged.prices = Store.mergePrices(merged.prices, dup.prices);
+        
+        // Tombstone the duplicate
+        const tombstone = Store.softDelete(dup);
+        outItems.push(tombstone);
+        toPushItems.push(tombstone.id);
+      }
+      
+      merged.updatedAt = Store.nextStamp(merged.updatedAt);
+      outItems.push(merged);
+      toPushItems.push(merged.id);
+    }
+
+    // Remap meals
+    const toPushMeals = [];
+    const outMeals = meals.map(m => {
+      if (m.deletedAt) return m;
+      let changed = false;
+      const nextIds = m.itemIds.map(id => {
+        if (idMap[id]) { changed = true; return idMap[id]; }
+        return id;
+      });
+      if (changed) {
+        const nextMeal = Store.updateMeal(m, { itemIds: [...new Set(nextIds)] });
+        toPushMeals.push(nextMeal.id);
+        return nextMeal;
+      }
+      return m;
+    });
+
+    return {
+      items: outItems,
+      meals: outMeals,
+      toPush: { items: toPushItems, meals: toPushMeals }
+    };
   },
 
   /* `commit()` mutates state, renders, and only THEN awaits the write. A pull

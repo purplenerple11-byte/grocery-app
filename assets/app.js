@@ -8,11 +8,11 @@ function currentCreatorName() {
 }
 
 function getAttributionSeenMap() {
-  try { return JSON.parse(sessionStorage.getItem('grocery_attr_seen') || '{}'); }
+  try { return JSON.parse(localStorage.getItem('grocery_attr_seen') || '{}'); }
   catch (e) { return {}; }
 }
 function setAttributionSeenMap(map) {
-  try { sessionStorage.setItem('grocery_attr_seen', JSON.stringify(map)); }
+  try { localStorage.setItem('grocery_attr_seen', JSON.stringify(map)); }
   catch (e) {}
 }
 
@@ -28,7 +28,7 @@ function getAttributionState(item) {
   if (age >= 32000) return null;
   return {
     name: item.addedBy,
-    isFading: age >= 30000
+    isFading: age >= 29000
   };
 }
 
