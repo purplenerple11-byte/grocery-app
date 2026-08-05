@@ -1503,7 +1503,34 @@ function renderSyncPanel(s) {
     <button id="sync-invite-btn">Invite someone</button>
     <p class="dialog-note" id="sync-invite-out" hidden></p>
     <button id="sync-signout-btn">Sign out</button>
-    <p class="sync-error" id="sync-error" hidden></p>`;
+    <p class="sync-error" id="sync-error" hidden></p>
+    <p class="dialog-note" id="sync-diag" hidden></p>`;
+  fillSyncDiag();
+}
+
+/* A phone has no console. Diagnosing the 2026-08-05 sync failures took six
+   rounds partly because nobody could tell whether the phone was even running
+   the current code, and every "hard refresh" was taken on trust.
+
+   The version comes from `caches.keys()`, NOT from a constant in this file:
+   that reports what the device actually holds, which is the whole question. A
+   constant would report what the source says it should be and would have been
+   useless for exactly the bug it exists to catch.
+
+   `outbox` is the other half. A number that does not fall to zero across two
+   syncs means changes are queued and not leaving, which every failure so far
+   has looked like from the inside while the panel read "Synced". */
+async function fillSyncDiag() {
+  const el = document.getElementById('sync-diag');
+  if (!el) return;
+  const parts = [];
+  try {
+    const keys = await caches.keys();
+    parts.push(keys.find((k) => k.startsWith('grocery-')) || 'not installed');
+  } catch (e) { parts.push('version unknown'); }
+  try { parts.push(`outbox ${await DB.outboxCount()}`); } catch (e) { /* pre-init */ }
+  el.textContent = parts.join(' · ');
+  el.hidden = false;
 }
 
 /* Locks a button for the duration of a request. A double-tap on "Join" would
