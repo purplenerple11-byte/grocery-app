@@ -489,11 +489,24 @@ const Sync = {
     if (Sync._inFlight) return Sync._inFlight;
     Sync._inFlight = (async () => {
       try {
+        const stampBefore = Sync.lastSyncAt;
         await Sync.seedFromLocal();
         const pushed = await Sync.push();
         const pulled = await Sync.pull();
-        const failed = !!(pushed.error || pulled.error);
-        if (failed) Sync._scheduleRetry(); else Sync._failures = 0;
+        const failed = pushed.error || pulled.error;
+        /* push() and pull() each report their own outcome, so whichever runs
+           LAST wins the status — and pull runs last. A failed push followed by
+           a working pull therefore used to land on 'idle' with a fresh
+           lastSyncAt, i.e. "synced, just now" while nothing had uploaded. That
+           is what hid the 2026-08-05 outage for a day. Only this function knows
+           both halves, so only this function may declare success. */
+        if (failed) {
+          Sync.lastSyncAt = stampBefore;
+          Sync._fail(failed);
+          Sync._scheduleRetry();
+        } else {
+          Sync._failures = 0;
+        }
         return { pushed, pulled };
       } finally {
         Sync._inFlight = null;

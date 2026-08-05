@@ -2,7 +2,10 @@
    exposing ONLY the surface sync.js is allowed to use (the list is pinned in a
    comment at the top of sync.js). Because Sync.init takes the client as a
    parameter, this drives the real engine with no network. */
-function makeFakeSupabase({ items = [], meals = [], households = [], household = 'h1', session = { user: { id: 'u1', email: 'a@b.c' } }, fail = null, anonDisabled = false, rpcFail = null } = {}) {
+/* `fail` breaks everything; `pushFail` breaks ONLY upserts, which is the shape
+   of the real 2026-08-05 outage — a column missing server-side made every
+   write 400 while reads kept returning 200. */
+function makeFakeSupabase({ items = [], meals = [], households = [], household = 'h1', session = { user: { id: 'u1', email: 'a@b.c' } }, fail = null, pushFail = null, anonDisabled = false, rpcFail = null } = {}) {
   const tables = { items: items.slice(), meals: meals.slice(), households: households.slice() };
   const calls = [];
 
@@ -64,7 +67,7 @@ function makeFakeSupabase({ items = [], meals = [], households = [], household =
         },
         upsert(rows, opts) {
           calls.push({ upsert: table, count: rows.length, opts });
-          if (fail) return Promise.resolve({ data: null, error: fail });
+          if (fail || pushFail) return Promise.resolve({ data: null, error: fail || pushFail });
           for (const row of rows) {
             const i = tables[table].findIndex((r) => r.id === row.id);
             // The server stamps updated_at; the client never sends it.

@@ -1328,6 +1328,38 @@ test('a join never auto-seeds — the duplication bug this fixes', async () => {
   resetSync();
 });
 
+/* The 2026-08-05 outage. `added_by` was added to toItemRow and to schema.sql,
+   but schema.sql is a record, not a migration — the live table never got the
+   column, so every upsert 400'd. Pull kept working, and because pull ran second
+   and stamped its own success, the panel read "synced, just now" for a day
+   while two people's writes piled up in their outboxes. Half a sync is not a
+   sync, and it must never again be reported as one. */
+test('a failed push is not masked by the pull that follows it', async () => {
+  const client = await syncFixture({
+    pushFail: { message: "Could not find the 'added_by' column of 'items' in the schema cache" }
+  });
+  await DB.put(Store.createItem('Milk', { id: 'm1' }));
+  const before = Sync.lastSyncAt;
+
+  await Sync.sync();
+
+  assertEqual(Sync.status, 'error', 'a sync that uploaded nothing must not report idle');
+  assertEqual(Sync.lastSyncAt, before, 'and must not stamp a fresh success time');
+  assert(/added_by/.test(Sync.lastError || ''), 'the real error survives for the panel to show');
+  assertEqual((await DB.outboxAll()).length, 1, 'the write is still queued, not lost');
+  resetSync();
+});
+
+test('a clean sync still reports idle and stamps the time', async () => {
+  await syncFixture();
+  await DB.put(Store.createItem('Milk', { id: 'm1' }));
+  await Sync.sync();
+  assertEqual(Sync.status, 'idle', 'nothing failed, so nothing is reported');
+  assert(Sync.lastSyncAt > 0, 'a real success does stamp the time');
+  assertEqual((await DB.outboxAll()).length, 0, 'and the outbox drained');
+  resetSync();
+});
+
 test('an empty joining device needs no question at all', async () => {
   await joinFixture();
   await Sync.joinWithCode('AAAAAAAAAA');

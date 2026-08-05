@@ -17,8 +17,8 @@ that restocks inventory by the quantity you actually bought.
   Repo `github.com/purplenerple11-byte/grocery-app`, branch `main`.
   Deploys from `main` root on push — **pushing to main publishes it** (~1 min).
   No build command, no config file: Cloudflare copies the repo and serves it.
-- **Household sync (built 2026-08-04).** Supabase Postgres + RLS behind
-  magic-link auth. IndexedDB is still the read source of truth and the app is
+- **Household sync (built 2026-08-04).** Supabase Postgres + RLS, joined with an
+  invite code. IndexedDB is still the read source of truth and the app is
   fully usable signed-out and offline; the network is a background reconciler.
   Schema and policies live in `supabase/schema.sql`. See "Sync" below.
 
@@ -102,6 +102,27 @@ engine against `tests/fake-supabase.js` with no network.
 - **Tombstones purge locally after 90 days.** A device offline longer than that
   can resurrect what it never saw deleted.
 
+**⚠ Schema drift silently breaks all writes — the 2026-08-05 outage.** Adding a
+field to `Store.toItemRow` puts a new column name on the wire. If the live table
+does not have that column, PostgREST rejects **every** upsert with 400 and
+nothing uploads. `supabase/schema.sql` is a committed *record*; editing it does
+not touch the database. Commit `2e20331` added `added_by` to both the mapper and
+`schema.sql`, nobody ran the SQL, and household sync was dead for a day.
+
+The failure was invisible because reads kept working: `sync()` ran push then
+pull, pull succeeded, and pull's own `_set('idle')` + `lastSyncAt = Date.now()`
+overwrote push's error. The panel read "synced, just now" the entire time. Both
+members kept adding items into outboxes that never drained. `sync()` now owns
+the verdict — if either half failed, it restores the previous `lastSyncAt` and
+reports the error, because half a sync is not a sync.
+
+**So: any change to `toItemRow`/`toMealRow` needs a matching `alter table` run
+against the live project, in the same change.** There is no migration runner and
+no CI to catch it. Two tests pin the reporting half (`a failed push is not
+masked by the pull that follows it`, plus a clean-sync control), but nothing can
+pin the drift itself from inside the test suite — the fake client has whatever
+columns the fake gives it.
+
 **⚠ `Store.deduplicateSnapshot` — read this before touching sync.** Added
 2026-08-04 (`0c249ab`) and running on *every* pull, inside `reconcileSnapshot`.
 It groups live items by trimmed lower-cased name, keeps the newest by
@@ -168,7 +189,9 @@ tests/fake-supabase.js     hand-written Supabase stand-in; no network in tests
 assets/sync.js             sync engine: auth, outbox push, delta pull. No DOM.
 assets/sync-config.js      Supabase URL + publishable key (public by design)
 supabase/schema.sql        tables, RLS policies, RPCs — paste into the SQL editor
-tests/store.test.js        115 tests, all passing (incl. sync reconciliation)
+                           ⚠ a RECORD, not a migration. Editing it changes
+                           nothing until someone runs it. See "schema drift".
+tests/store.test.js        125 tests, all passing (incl. sync reconciliation)
 PRODUCT.md                 durable product truth (users, mechanism, constraints)
 docs/DESIGN.md             the implemented dark system (source of truth for look)
 docs/superpowers/specs/    the design spec — read this first
@@ -235,7 +258,7 @@ python3 -m http.server 8000        # from repo root; service worker needs http
 V2 (price + store history), V3 (saved meals), all five V4 items (merge import,
 sorting + new categories, UI/interaction tweaks, meal pre-flight modal,
 quick-add autocomplete), V5's pantry export, and V6 household sync
-(code-based join, tombstones, outbox, reconciler). 123 tests passing —
+(code-based join, tombstones, outbox, reconciler). 125 tests passing —
 `Store.deduplicateSnapshot` is the one function with no coverage; see the
 warning in the Sync section.
 
