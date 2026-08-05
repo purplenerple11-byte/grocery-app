@@ -1,5 +1,56 @@
 /* UI layer. All data changes go through Store pure functions, then commit()/removeItems() persist. */
-const state = { items: [], meals: [] };
+const state = { items: [], meals: [], displayName: '' };
+
+function currentCreatorName() {
+  if (state.displayName) return state.displayName;
+  if (typeof Sync !== 'undefined' && Sync.email) return Sync.email.split('@')[0];
+  return '';
+}
+
+function getAttributionSeenMap() {
+  try { return JSON.parse(sessionStorage.getItem('grocery_attr_seen') || '{}'); }
+  catch (e) { return {}; }
+}
+function setAttributionSeenMap(map) {
+  try { sessionStorage.setItem('grocery_attr_seen', JSON.stringify(map)); }
+  catch (e) {}
+}
+
+function getAttributionState(item) {
+  if (!item.addedBy) return null;
+  const map = getAttributionSeenMap();
+  const now = Date.now();
+  if (!map[item.id]) {
+    map[item.id] = now;
+    setAttributionSeenMap(map);
+  }
+  const age = now - map[item.id];
+  if (age >= 32000) return null;
+  return {
+    name: item.addedBy,
+    isFading: age >= 30000
+  };
+}
+
+const attrTimers = new Map();
+function scheduleAttributionFadeouts() {
+  attrTimers.forEach((t) => clearTimeout(t));
+  attrTimers.clear();
+  const map = getAttributionSeenMap();
+  const now = Date.now();
+  document.querySelectorAll('#list .added-by').forEach((el) => {
+    const id = el.dataset.attrId;
+    if (!id) return;
+    const seenAt = map[id] || now;
+    const age = now - seenAt;
+    const remFade = Math.max(0, 30000 - age);
+    const t = setTimeout(() => {
+      el.classList.add('faded');
+      setTimeout(() => { el.style.display = 'none'; }, 1500);
+    }, remFade);
+    attrTimers.set(id, t);
+  });
+}
 
 // Uses the global CATEGORY_ORDER declared in store.js
 
@@ -129,7 +180,12 @@ function renderList() {
     ${items.map((it) => `
       <div class="row${it.checked ? ' done' : ''}${Store.hasEnough(it) ? ' have' : ''}" data-id="${it.id}">
         <button class="check" data-action="check" aria-label="Check off">✓</button>
-        <span class="name">${escapeHtml(it.name)}</span>
+        <span class="name">
+          ${escapeHtml(it.name)}${(() => {
+            const attr = getAttributionState(it);
+            return attr ? ` <em class="added-by${attr.isFading ? ' faded' : ''}" data-attr-id="${it.id}">by ${escapeHtml(attr.name)}</em>` : '';
+          })()}
+        </span>
         ${Store.hasEnough(it) ? `<span class="have-note">have ${it.stock}</span>` : ''}
         ${it.tracked ? '' : '<button class="track-btn" data-action="track">track</button>'}
         ${it.unit ? `<span class="unit">${escapeHtml(it.unit)}</span>` : ''}
@@ -142,6 +198,7 @@ function renderList() {
     || `<div class="empty">Nothing on the list
           <span class="empty-hint">Add an item above, or open Inventory and tap what you're out of.</span>
         </div>`;
+  scheduleAttributionFadeouts();
 }
 
 function renderSheet() {
@@ -272,7 +329,7 @@ async function saveMeals(ids, tombstone = null) {
     if (!el) return;
     const item = state.items.find(it => it.id === el.dataset.id);
     if (item) {
-      commit(Store.update(item, { onList: true, checked: false }));
+      commit(Store.update(item, { onList: true, checked: false, addedBy: currentCreatorName() }));
       addInput.value = '';
       hideList();
     }
@@ -286,9 +343,9 @@ async function saveMeals(ids, tombstone = null) {
     // Exact-match → re-add existing item; else create new
     const existing = state.items.find(it => it.name.toLowerCase() === name.toLowerCase());
     if (existing) {
-      commit(Store.update(existing, { onList: true, checked: false }));
+      commit(Store.update(existing, { onList: true, checked: false, addedBy: currentCreatorName() }));
     } else {
-      commit(Store.createItem(name, { onList: true }));
+      commit(Store.createItem(name, { onList: true, addedBy: currentCreatorName() }));
     }
 
     addInput.value = '';
@@ -957,8 +1014,7 @@ document.getElementById('item-form').addEventListener('submit', (e) => {
     lowAt: Math.max(0, parseInt(f.lowAt.value, 10) || 0)
   };
   if (!fields.name) return;
-  const existing = state.items.find((x) => x.id === dialogItemId);
-  commit(existing ? Store.update(existing, fields) : Store.createItem(fields.name, fields));
+  commit(existing ? Store.update(existing, fields) : Store.createItem(fields.name, { ...fields, addedBy: currentCreatorName() }));
   document.getElementById('item-dialog').close();
 });
 
@@ -1190,8 +1246,19 @@ onLongPress(document.getElementById('inv-grid'), '.tile', (el) => openItemDialog
 document.getElementById('inv-add').addEventListener('click', () => openItemDialog(null));
 
 document.getElementById('settings-btn').addEventListener('click', () => {
+  const nameInput = document.getElementById('display-name-input');
+  if (nameInput) nameInput.value = state.displayName || '';
   document.getElementById('settings-dialog').showModal();
 });
+
+const displayNameInput = document.getElementById('display-name-input');
+if (displayNameInput) {
+  displayNameInput.addEventListener('input', async (e) => {
+    state.displayName = e.target.value.trim();
+    await DB.putSetting('displayName', state.displayName);
+  });
+}
+
 document.getElementById('settings-close').addEventListener('click', () => {
   document.getElementById('settings-dialog').close();
 });
@@ -1571,6 +1638,7 @@ async function boot() {
   // meal based on whichever items happened to be present, so an item that a
   // sync had not yet delivered would be permanently stripped from its meals.
   state.meals = Store.live(Store.normalizeMeals(await DB.getSetting('meals', [])));
+  state.displayName = await DB.getSetting('displayName', '');
   render();
   if ('serviceWorker' in navigator) navigator.serviceWorker.register('./sw.js');
   bootSync();

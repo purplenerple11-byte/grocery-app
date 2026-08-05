@@ -54,6 +54,7 @@ create table if not exists public.items (
   on_list           boolean not null default false,
   list_qty          integer not null default 1 check (list_qty between 1 and 100000),
   checked           boolean not null default false,
+  added_by          text    not null default '',
   prices            jsonb   not null default '[]'::jsonb
                       check (jsonb_typeof(prices) = 'array'
                              and jsonb_array_length(prices) <= 500
