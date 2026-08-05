@@ -341,6 +341,8 @@ the implementer where an item collides with existing code.
      case — a truly custom user category still falls back on edit).
 
 3. **UI & interaction tweaks** — ✅ **BUILT**
+   - *Category picker overlay:* The category dropdown now uses absolute positioning to float over subsequent fields, rather than pushing the entire layout down when opened.
+   - *New category button styling:* The "+ New category..." button inside the picker was restyled to match the list rows, removing the radio-circle ornament.
    - *Slide-out button:* enlarged `#meals-tab` (28×84px, was 17×66) for an
      easier touch target on phone.
    - *Swipe-to-remove:* bidirectional swipe on shopping-list rows. The row
