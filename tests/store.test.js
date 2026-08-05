@@ -1328,6 +1328,39 @@ test('a join never auto-seeds — the duplication bug this fixes', async () => {
   resetSync();
 });
 
+/* The merge war. deduplicateSnapshot ran inside reconcileSnapshot on every
+   pull: group live items by name, keep the newest, tombstone the rest. Two
+   devices holding the same pair could pick different survivors, so each
+   resurrected the other's victim and re-pushed it — the table rewrote itself
+   every few minutes, deletes never stuck, and attribution was lost whenever an
+   older copy won. Reconciliation is keyed on id and nothing else. */
+test('reconcile never tombstones a record just for sharing a name', () => {
+  const a = Store.createItem('Milk', { id: 'a', category: 'Dairy', stock: 1 });
+  const b = Store.createItem('milk', { id: 'b', category: 'Other', stock: 2 });
+  const out = Store.reconcileSnapshot({ items: [a, b], meals: [] }, { items: [], meals: [] });
+
+  assertEqual(Store.live(out.items).length, 2, 'both survive — different ids are different items');
+  assertEqual(out.items.filter((r) => r.deletedAt).length, 0, 'nothing was tombstoned');
+  assertEqual(Store.live(out.items).map((r) => r.stock).sort(), [1, 2], 'and no stock was summed');
+});
+
+test('reconcile is idempotent — a second pass pushes nothing new', () => {
+  const a = Store.createItem('Milk', { id: 'a' });
+  const b = Store.createItem('Milk', { id: 'b' });
+  const first = Store.reconcileSnapshot({ items: [a, b], meals: [] }, { items: [], meals: [] });
+  const second = Store.reconcileSnapshot({ items: first.items, meals: [] }, { items: [], meals: [] });
+
+  assertEqual(second.toPush.items.length, 0, 'a settled snapshot re-pushes nothing');
+  assertEqual(Store.live(second.items).length, 2, 'and still holds both records');
+});
+
+test('a remote delete beats a local live copy of the same name', () => {
+  const local = Store.createItem('Eggs', { id: 'e1' });
+  const remote = Store.softDelete(Store.createItem('Eggs', { id: 'e1' }));
+  const out = Store.reconcileSnapshot({ items: [local], meals: [] }, { items: [remote], meals: [] });
+  assertEqual(Store.live(out.items).length, 0, 'the delete propagates instead of being resurrected');
+});
+
 /* The 2026-08-05 outage. `added_by` was added to toItemRow and to schema.sql,
    but schema.sql is a record, not a migration — the live table never got the
    column, so every upsert 400'd. Pull kept working, and because pull ran second
