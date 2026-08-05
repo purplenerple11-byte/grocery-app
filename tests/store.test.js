@@ -1328,6 +1328,33 @@ test('a join never auto-seeds — the duplication bug this fixes', async () => {
   resetSync();
 });
 
+/* The push loop. A record stored before a field was added to createItem has no
+   such KEY, while the server's copy always does — and sameRecord compared
+   Object.keys(). Different key sets never match, so the record was pushed on
+   every pull, which bumped its server updated_at, which put it in the next
+   delta, forever. Observed live as a 37-entry outbox that never drained while
+   the panel read "synced". Reconciliation must normalise both sides to the
+   current shape before comparing. */
+test('a record missing a newer field is not pushed forever', () => {
+  const legacy = Store.createItem('Butter', { id: 'b1', onList: true });
+  delete legacy.addedBy;                       // written before addedBy existed
+  const remote = Store.fromItemRow(Store.toItemRow(Store.createItem('Butter', {
+    id: 'b1', onList: true, createdAt: legacy.createdAt, updatedAt: legacy.updatedAt
+  }), 'h1'));
+
+  const out = Store.reconcileSnapshot({ items: [legacy], meals: [] }, { items: [remote], meals: [] });
+  assertEqual(out.toPush.items, [], 'an unchanged legacy record must not be re-pushed');
+  assertEqual(out.items[0].addedBy, '', 'and it is normalised to the current shape');
+});
+
+test('meals survive reconciliation without being mangled into items', () => {
+  const local = Store.createMeal('Taco Night', ['a', 'b'], { id: 'm1' });
+  const remote = Store.fromMealRow(Store.toMealRow(local, 'h1'));
+  const out = Store.reconcileSnapshot({ items: [], meals: [local] }, { items: [], meals: [remote] });
+  assertEqual(out.toPush.meals, [], 'an identical meal is not re-pushed');
+  assertEqual(out.meals[0].itemIds, ['a', 'b'], 'and keeps its item ids');
+});
+
 /* The merge war. deduplicateSnapshot ran inside reconcileSnapshot on every
    pull: group live items by name, keep the newest, tombstone the rest. Two
    devices holding the same pair could pick different survivors, so each

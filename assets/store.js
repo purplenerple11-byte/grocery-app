@@ -565,11 +565,31 @@ const Store = {
      records plus the ids whose merged value differs from the server's copy —
      those MUST be pushed back or the two sides never converge. `localAll`
      includes tombstones; filter with Store.live only at the render boundary. */
-  reconcileRecords(localAll, remoteDelta) {
-    const byId = new Map(localAll.map((r) => [r.id, r]));
+  /* Rebuilds a record with the CURRENT field set, filling defaults for anything
+     added since it was stored. Load-bearing, not tidiness: a record written
+     before `addedBy` existed has no such KEY, the server's copy always does,
+     and `sameRecord` compares key sets. The mismatch pushed the record on every
+     pull, which bumped its server `updated_at`, which put it back in the next
+     delta — a push loop that ran until the outbox was permanently full (37
+     stuck entries on the owner's Mac) while the panel read "synced". Any future
+     field added to createItem/createMeal is healed here for free.
+
+     Distinct from `normalizeRecord` above, which only backfills timestamps on
+     import and preserves unknown keys. This one is authoritative about shape,
+     which is exactly what convergence needs and what an import must not do. */
+  normalizeShape(r) {
+    if (!r || typeof r !== 'object') return r;
+    return 'itemIds' in r
+      ? Store.createMeal(r.name, r.itemIds || [], r)
+      : Store.createItem(r.name, r);
+  },
+
+  reconcileRecords(localAll, remoteDelta, normalize = Store.normalizeShape) {
+    const byId = new Map((Array.isArray(localAll) ? localAll : []).map((r) => [r.id, normalize(r)]));
     const toPush = [];
-    for (const remote of Array.isArray(remoteDelta) ? remoteDelta : []) {
-      if (!remote || typeof remote !== 'object' || !remote.id) continue;
+    for (const raw of Array.isArray(remoteDelta) ? remoteDelta : []) {
+      if (!raw || typeof raw !== 'object' || !raw.id) continue;
+      const remote = normalize(raw);
       const merged = Store.reconcileRecord(byId.get(remote.id) || null, remote);
       byId.set(remote.id, merged);
       if (!Store.sameRecord(merged, remote)) toPush.push(merged.id);
