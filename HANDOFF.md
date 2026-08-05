@@ -234,11 +234,22 @@ python3 -m http.server 8000        # from repo root; service worker needs http
      .map((u) => fetch(u, { cache: 'reload' })))
      .then(() => location.replace('/tests/run-tests.html?fresh=' + performance.now()));
    ```
+   **`cache: 'reload'` does NOT bypass the service worker.** It only bypasses
+   the HTTP cache. If anything opened the app root, a SW is registered at scope
+   `/` and it serves `/assets/` and `/tests/` from ITS cache no matter what
+   `fetch` options you pass. Opening the preview at `http://localhost:8080` is
+   enough to register one. Unregister first, every time — the snippet above
+   reports how many it killed, and a non-zero count means you were about to
+   test yesterday's code.
+
    This bites in both directions and the false **pass** is the cheap one. On
    2026-08-05 a stale `fake-supabase.js` produced a false *failure* that looked
    exactly like a broken fix, and two rounds went into "fixing" working code.
-   Before trusting any red, confirm the loaded source is yours:
-   `/myNewThing/.test(Sync.sync.toString())`.
+   **Before trusting any red OR green, confirm the loaded source is yours:**
+   ```js
+   /myNewThing/.test(Store.reconcileRecords.toString())   // false = stale
+   ```
+   That one line would have saved three rounds in a single session.
 2. **Synthetic clicks miss `#complete-trip`** — it's fixed-position and the sheet
    overlays it in hit-testing. Use `document.getElementById('complete-trip').click()`.
 3. **Long-press and swipe can't be simulated** reliably in automation. Call
@@ -279,6 +290,30 @@ python3 -m http.server 8000        # from repo root; service worker needs http
    This is not hypothetical: it took household sync down for a full day on
    2026-08-05. Full account, including why the status panel reported "synced"
    throughout, is under "schema drift" in the Sync section.
+
+9. **Adding a field to `createItem` makes every existing record push forever.**
+   Records already in IndexedDB have no such KEY, the server's copy always does,
+   and `sameRecord` compares `Object.keys()`. Mismatched key sets put the record
+   in `toPush` on every pull; pushing bumps its server `updated_at`, which puts
+   it in the next delta. Self-sustaining. It shows up as a **stuck outbox with a
+   green status** — `outbox: 37, status: "idle", lastError: null` — because push
+   genuinely succeeds and pull immediately re-queues the same records.
+
+   `reconcileRecords` now normalises both sides through `Store.normalizeShape`,
+   so this is handled for any future field. The diagnostic to reach for when
+   sync looks fine but changes do not stick:
+   ```js
+   (async () => { console.log(JSON.stringify({ cursor: await DB.getSetting('sync.cursor', null),
+     outbox: (await DB.outboxAll()).length, status: Sync.status, lastError: Sync.lastError })); })()
+   ```
+   A non-zero outbox that does not fall to zero across two syncs is this bug.
+10. **There are two normalisers and they must not be merged.**
+   `Store.normalizeRecord` backfills timestamps on **import** and preserves
+   unknown keys. `Store.normalizeShape` rebuilds a record to the **current**
+   field set and drops unknown keys — right for convergence, wrong for import.
+   They are both plain keys in one object literal, so giving them the same name
+   silently shadows one with no error at all. That nearly shipped.
+
 
 ## Status
 
