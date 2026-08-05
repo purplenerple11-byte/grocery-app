@@ -123,34 +123,31 @@ masked by the pull that follows it`, plus a clean-sync control), but nothing can
 pin the drift itself from inside the test suite — the fake client has whatever
 columns the fake gives it.
 
-**⚠ `Store.deduplicateSnapshot` — read this before touching sync.** Added
-2026-08-04 (`0c249ab`) and running on *every* pull, inside `reconcileSnapshot`.
-It groups live items by trimmed lower-cased name, keeps the newest by
-`updatedAt`, sums `stock`, ORs `onList`/`checked`/`tracked`, unions `prices`,
-tombstones the losers, and remaps meal `itemIds` onto the survivor.
+**⚠ Never dedupe by name inside the reconciler — it caused a merge war.**
+`Store.deduplicateSnapshot` (added `0c249ab`, removed `0f0c4a2`) ran inside
+`reconcileSnapshot` on every pull: group live items by lowercased name, keep the
+newest by `updatedAt`, sum their stock, tombstone the rest.
 
-It converges and it is idempotent (after one pass each name is unique, so the
-next pass is a no-op). But be clear about what it costs:
+It looked convergent and was not. Two devices holding the same pair could pick
+DIFFERENT survivors, so each resurrected the other's victim and pushed it back.
+On the live project the whole items table re-stamped at 11:43:09, then 11:44:53,
+then 11:49:04, with same-name pairs sitting as one live row plus one tombstone.
 
-- **It has no tests.** The suite is 123 passing, the same count as before it
-  landed. `CLAUDE.md` requires a test for every new `Store` function; this one
-  is the exception and should not stay one.
-- **Two genuinely different items that share a name are destroyed, silently.**
-  "Milk" (dairy) and "Milk" (oat, category Other) merge into one row whose
-  stock is the sum. There is no confirmation and no banner. This is the same
-  class of data loss the category rule in `CLAUDE.md` exists to prevent.
-- **Summing `stock` is a guess.** For import duplicates it over-counts; for a
-  true offline conflict it is closer to right than LWW. Neither is correct in
-  general.
+Three symptoms, one cause — worth recognising if anything like it returns:
 
-It was written to clean up the 137-item duplicate set from a bad "Add from
-file" import. That cleanup is done (server-side, via SQL — 139 live items, 0
-duplicates), so the function is now guarding against a case that has not
-recurred. Options, in order of preference: delete it and rely on the
-autocomplete + `mergeImport` name-matching that already prevent duplicates at
-the source; or keep it but gate it behind an explicit "Merge duplicates" button
-in Settings, so it is a user action rather than a silent side effect of every
-pull. Do not leave it running untested.
+- **Deletes did not stick.** You removed the copy you could see; the other
+  device still held the other id and pushed it back alive.
+- **Attribution vanished.** The surviving copy was whichever won by `updatedAt`,
+  and older copies carry `added_by ''`.
+- **"It used to sync on refresh."** It did, before that commit.
+
+**Reconciliation is keyed on id and nothing else.** Two records that share a
+name are two records. Merging them is a user decision, not a sync one — if
+duplicate cleanup is wanted again it belongs behind an explicit button, applied
+once to local state, never inside the pull path. The regression tests to keep
+green are `reconcile never tombstones a record just for sharing a name` and
+`reconcile is idempotent — a second pass pushes nothing new`; the second is the
+one the loop would have failed.
 
 **Security.** The publishable key is public by design and safe *only* because
 RLS is on for all five tables and every policy is `to authenticated`, with
