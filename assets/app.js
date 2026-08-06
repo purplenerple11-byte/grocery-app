@@ -1505,8 +1505,49 @@ function renderSyncPanel(s) {
     <p class="dialog-note" id="sync-invite-out" hidden></p>
     <button id="sync-signout-btn">Sign out</button>
     <p class="sync-error" id="sync-error" hidden></p>
-    <p class="dialog-note" id="sync-diag" hidden></p>`;
+    <p class="dialog-note" id="sync-diag" hidden></p>
+    <button id="sync-report-btn">Copy sync report</button>`;
   fillSyncDiag();
+}
+
+/* Everything a diagnosis needs, on the clipboard, from a phone.
+   Written after asking the owner to open a browser console four times — twice
+   on a phone, where there isn't one. A diagnostic that requires devtools does
+   not exist for the person actually holding the broken device. */
+async function copySyncReport() {
+  const report = { version: 'unknown', status: null, lastError: null, cursor: null, outbox: 0, stuck: [] };
+  try {
+    const keys = await caches.keys();
+    report.version = keys.find((k) => k.startsWith('grocery-')) || 'not installed';
+  } catch (e) { /* private mode */ }
+  if (typeof Sync !== 'undefined') {
+    report.status = Sync.status;
+    report.lastError = Sync.lastError;
+    report.household = Sync.householdId;
+  }
+  try {
+    report.cursor = await DB.getSetting('sync.cursor', null);
+    const entries = await DB.outboxAll();
+    const all = await DB.getAll();
+    report.outbox = entries.length;
+    // The field list is the point: a record missing a key the server has is
+    // what made these queue forever (gotcha #9).
+    report.stuck = entries.slice(0, 8).map((e) => {
+      const r = all.find((x) => x.id === e.id);
+      return { kind: e.kind, name: r ? r.name : '(gone)', fields: r ? Object.keys(r).sort().join(',') : null };
+    });
+  } catch (e) { report.dbError = e.message; }
+
+  const text = JSON.stringify(report, null, 1);
+  try {
+    await navigator.clipboard.writeText(text);
+    showBanner('Sync report copied — paste it in the chat.');
+  } catch (e) {
+    // Clipboard needs a secure context and a user gesture; if it is refused,
+    // showing the text still beats telling someone to find a console.
+    const out = document.getElementById('sync-diag');
+    if (out) { out.textContent = text; out.hidden = false; }
+  }
 }
 
 /* A phone has no console. Diagnosing the 2026-08-05 sync failures took six
@@ -1630,6 +1671,8 @@ document.getElementById('settings-dialog').addEventListener('click', async (e) =
       out.textContent = `Code: ${code} — single use, expires in 24 hours.`;
     } else if (id === 'sync-signout-btn') {
       await Sync.signOut();
+    } else if (id === 'sync-report-btn') {
+      await copySyncReport();
     }
   } catch (err) {
     showSyncError(err.message || 'Sync action failed.');
