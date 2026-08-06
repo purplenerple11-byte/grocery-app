@@ -1014,6 +1014,7 @@ document.getElementById('item-form').addEventListener('submit', (e) => {
     lowAt: Math.max(0, parseInt(f.lowAt.value, 10) || 0)
   };
   if (!fields.name) return;
+  const existing = state.items.find((x) => x.id === dialogItemId);
   commit(existing ? Store.update(existing, fields) : Store.createItem(fields.name, { ...fields, addedBy: currentCreatorName() }));
   document.getElementById('item-dialog').close();
 });
