@@ -406,7 +406,7 @@ document.getElementById('complete-trip').addEventListener('click', async () => {
       ${it.listQty > 1 ? `<span class="trip-qty">×${it.listQty}</span>` : ''}
       <input type="text" inputmode="decimal" placeholder="$" data-price-for="${it.id}" aria-label="Price for ${escapeHtml(it.name)}">
     </div>`).join('');
-  document.getElementById('trip-dialog').showModal();
+  openModal(document.getElementById('trip-dialog'));
 });
 
 document.getElementById('trip-cancel').addEventListener('click', () => {
@@ -973,6 +973,23 @@ categoryList.addEventListener('click', (e) => {
   categoryBtn.focus();
 });
 
+/* `<dialog>.showModal()` focuses the first focusable descendant, which in most
+   of these is a text input — so opening Settings or an item raised the phone
+   keyboard over the content the user came to look at, and covered half the
+   dialog before they had read any of it.
+
+   Focusing the dialog itself instead keeps everything showModal() gives us —
+   the focus trap, Escape to close, the screen-reader announcement — without
+   summoning a keyboard nobody asked for. The dialogs carry `tabindex="-1"` so
+   they can take focus without joining the tab order.
+
+   `#meal-dialog` is deliberately NOT routed through here: its only purpose is
+   typing a name, so the keyboard is the point. */
+function openModal(el) {
+  el.showModal();
+  el.focus();
+}
+
 function openItemDialog(item) {
   dialogItemId = item ? item.id : null;
   const form = document.getElementById('item-form');
@@ -999,7 +1016,7 @@ function openItemDialog(item) {
             <span class="hist-date">${escapeHtml(formatDate(p.at))}</span>
           </div>`).join('')
       : '';
-  document.getElementById('item-dialog').showModal();
+  openModal(document.getElementById('item-dialog'));
 }
 
 document.getElementById('item-form').addEventListener('submit', (e) => {
@@ -1075,7 +1092,7 @@ document.getElementById('meals-list').addEventListener('click', (e) => {
     `;
   }).join('');
   
-  document.getElementById('preflight-dialog').showModal();
+  openModal(document.getElementById('preflight-dialog'));
 });
 
 document.getElementById('preflight-cancel').addEventListener('click', () => {
@@ -1249,7 +1266,7 @@ document.getElementById('inv-add').addEventListener('click', () => openItemDialo
 document.getElementById('settings-btn').addEventListener('click', () => {
   const nameInput = document.getElementById('display-name-input');
   if (nameInput) nameInput.value = state.displayName || '';
-  document.getElementById('settings-dialog').showModal();
+  openModal(document.getElementById('settings-dialog'));
 });
 
 const displayNameInput = document.getElementById('display-name-input');

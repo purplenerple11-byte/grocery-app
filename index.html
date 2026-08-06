@@ -53,7 +53,7 @@
   <div id="sheet-content"><div id="inv-grid"></div></div>
 </section>
 
-<dialog id="item-dialog">
+<dialog id="item-dialog" tabindex="-1">
   <form id="item-form">
     <h3 id="item-dialog-title">Edit item</h3>
     <label>Name <input name="name" required></label>
@@ -83,7 +83,7 @@
   </form>
 </dialog>
 
-<dialog id="trip-dialog">
+<dialog id="trip-dialog" tabindex="-1">
   <!-- novalidate: the submit handler sanitizes prices itself (rounds to cents,
        skips junk). Native validation would instead block the whole trip. -->
   <form id="trip-form" novalidate>
@@ -112,7 +112,7 @@
   </form>
 </dialog>
 
-<dialog id="preflight-dialog">
+<dialog id="preflight-dialog" tabindex="-1">
   <form id="preflight-form">
     <h3 id="preflight-dialog-title">Add Meal</h3>
     <div id="preflight-items" class="preflight-list"></div>
@@ -123,7 +123,7 @@
   </form>
 </dialog>
 
-<dialog id="settings-dialog">
+<dialog id="settings-dialog" tabindex="-1">
   <h3>Settings</h3>
   <menu>
     <div class="settings-field">
