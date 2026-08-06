@@ -315,6 +315,20 @@ python3 -m http.server 8000        # from repo root; service worker needs http
    silently shadows one with no error at all. That nearly shipped.
 
 
+11. **Postgres `jsonb` does not preserve object key order.** A price written as
+   `{price, store, at}` returns from the server as `{at, price, store}`. Any
+   equality check on a record with nested objects must canonicalise
+   RECURSIVELY — `Store.sameRecord` sorted only top-level keys and so compared
+   `prices` as raw JSON, which never matched. Result: every record with price
+   history re-queued on every pull. Same visible symptom as gotcha #9 (stuck
+   outbox, green status), different cause, found only because one device had
+   17 stuck entries and another had 0 — the difference being whether that
+   device's copies had arrived via a pull and were already in jsonb order.
+
+   If a stuck outbox reappears, check the FIELD CONTENT, not just the field
+   list: ⚙ → "Copy sync report" dumps both from any device, no console needed.
+
+
 ## Status
 
 **Shipped and live:** v1 (list, inventory sheet, trip loop, export/import, PWA),
