@@ -557,8 +557,23 @@ const Store = {
      two devices permanently disagreeing, so it errs toward pushing. */
   sameRecord(a, b) {
     if (!a || !b) return a === b;
-    const canon = (r) => JSON.stringify(Object.keys(r).sort().map((k) => [k, r[k]]));
-    return canon(a) === canon(b);
+    /* Canonicalise RECURSIVELY. Sorting only the top level left `prices`
+       compared as raw JSON, and Postgres jsonb does not preserve object key
+       order — a price stored as {price, store, at} returns as {at, price,
+       store}. Identical data, unequal strings, so every record with price
+       history was queued for push on every pull and never drained: 17 stuck
+       entries on the owner's phone, while a device whose copies had come from
+       a pull (already in jsonb order) sat at zero.
+
+       Array ORDER is still significant, and should be: mergePrices returns a
+       deterministic order, so if the server's differs the record pushes once
+       and matches from then on. */
+    const canon = (v) => {
+      if (Array.isArray(v)) return v.map(canon);
+      if (v && typeof v === 'object') return Object.keys(v).sort().map((k) => [k, canon(v[k])]);
+      return v;
+    };
+    return JSON.stringify(canon(a)) === JSON.stringify(canon(b));
   },
 
   /* Folds a delta from the server into the full local set. Returns the merged

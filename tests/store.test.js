@@ -1328,6 +1328,33 @@ test('a join never auto-seeds — the duplication bug this fixes', async () => {
   resetSync();
 });
 
+/* The second push loop, same shape as the first but one level deeper.
+   Postgres jsonb does not preserve object key order — a price written as
+   {price, store, at} comes back as {at, price, store}. sameRecord sorted only
+   TOP-LEVEL keys and then stringified the values, so every record WITH PRICE
+   HISTORY compared unequal to its own server copy, forever. On the owner's
+   phone that was exactly 17 records, all of them with n_prices >= 1, while the
+   Mac (whose copies came from a pull, already in jsonb order) sat at 0. */
+test('a record is not re-pushed when only nested key ORDER differs', () => {
+  const local = Store.createItem('Honey', { id: 'h1',
+    prices: [{ price: 4.5, store: 'Aldi', at: 1000 }] });
+  // What jsonb hands back: same data, keys reordered.
+  const remote = Store.createItem('Honey', { id: 'h1',
+    createdAt: local.createdAt, updatedAt: local.updatedAt,
+    prices: [{ at: 1000, price: 4.5, store: 'Aldi' }] });
+
+  assert(Store.sameRecord(local, remote), 'key order is not a difference');
+  const out = Store.reconcileSnapshot({ items: [local], meals: [] }, { items: [remote], meals: [] });
+  assertEqual(out.toPush.items, [], 'so it must not queue for push');
+});
+
+test('sameRecord still catches a real nested difference', () => {
+  const a = Store.createItem('Honey', { id: 'h1', prices: [{ price: 4.5, store: 'Aldi', at: 1000 }] });
+  const b = Store.createItem('Honey', { id: 'h1', createdAt: a.createdAt, updatedAt: a.updatedAt,
+    prices: [{ at: 1000, price: 9.99, store: 'Aldi' }] });
+  assert(!Store.sameRecord(a, b), 'a changed price is a real difference');
+});
+
 /* The push loop. A record stored before a field was added to createItem has no
    such KEY, while the server's copy always does — and sameRecord compared
    Object.keys(). Different key sets never match, so the record was pushed on
