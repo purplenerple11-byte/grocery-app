@@ -464,10 +464,21 @@ document.getElementById('trip-form').addEventListener('submit', async (e) => {
     return Math.round(window.innerHeight * 0.86); // matching CSS #sheet.open height: 86vh
   }
 
-  function onPointerDown(e) {
-    if (e.button !== 0) return;
-    if (e.target.closest('button, input, select')) return;
+  /* Only a gesture that STARTED on the grab bar may toggle the sheet by tapping.
+     The tap branch in onPointerEnd used to fire for any pointerdown that armed
+     the drag, and content arms it whenever the sheet is scrolled to the top — so
+     tapping a category header collapsed the category AND closed the whole sheet.
+     Tracking the origin makes that impossible for anything in the content, not
+     just for the one control that happened to expose it. */
+  let fromBar = false;
 
+  function onPointerDown(e, viaBar) {
+    if (e.button !== 0) return;
+    // .inv-cat is a control built from a div, so it needs naming here: without
+    // it, a tap on a category arms a drag it never intends to finish.
+    if (e.target.closest('button, input, select, label, a, .inv-cat')) return;
+
+    fromBar = !!viaBar;
     active = true;
     isDragging = false;
     pointerId = e.pointerId;
@@ -516,9 +527,10 @@ document.getElementById('trip-form').addEventListener('submit', async (e) => {
     pointerId = null;
 
     if (!isDragging) {
-      // Tap gesture on sheet header bar: toggle state
-      const isOpen = sheet.classList.contains('open');
-      setSheetState(!isOpen, true);
+      // Tap, not a drag. Only the grab bar toggles the sheet — a tap that began
+      // in the content belongs to whatever was tapped, not to the sheet.
+      if (fromBar) setSheetState(!sheet.classList.contains('open'), true);
+      else sheet.style.transition = '';   // undo the 'none' armed on pointerdown
       return;
     }
 
@@ -569,10 +581,10 @@ document.getElementById('trip-form').addEventListener('submit', async (e) => {
     }
   }
 
-  bar.addEventListener('pointerdown', onPointerDown);
+  bar.addEventListener('pointerdown', (e) => onPointerDown(e, true));
   content.addEventListener('pointerdown', (e) => {
     if (sheet.classList.contains('open') && content.scrollTop <= 0) {
-      onPointerDown(e);
+      onPointerDown(e, false);
     }
   });
 
