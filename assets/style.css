@@ -1,6 +1,6 @@
 :root {
-  --canvas: #141413; --surface: #1f1e1b; --surface-2: #262521;
-  --ink: #faf9f5; --muted: #b0aea5; --hairline: #3d3d3a;
+  --canvas: #0e0e0d; --surface: #2a2925; --surface-2: #333029;
+  --ink: #faf9f5; --muted: #ccc9be; --hairline: #555550;
   --clay: #d97757; --clay-deep: #c6613f;
   --ok: #7d9b76; --low: #d9a557; --out: #c6613f;
   --serif: Georgia, "Source Serif Pro", Charter, serif;
