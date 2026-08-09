@@ -26,13 +26,21 @@ self.addEventListener('activate', (e) => {
       .then(() => self.clients.claim())
   );
 });
-/* Cache-first, but ONLY for our own GETs. Returning without calling
-   respondWith() hands the request back to the browser's default network path.
-   Scoping by origin rather than by an API hostname allowlist can't rot when the
-   backend URL changes — and it works because any vendored library is served
-   same-origin rather than hotlinked from a CDN. */
+/* Stale-while-revalidate: serve from cache immediately (fast + offline),
+   then silently fetch fresh copies in the background. The NEXT load gets
+   any updates — no waiting, no spinners, no user-visible delay. */
 self.addEventListener('fetch', (e) => {
   if (e.request.method !== 'GET') return;                       // never serve a mutation from cache
   if (new URL(e.request.url).origin !== self.location.origin) return; // API, CDNs
-  e.respondWith(caches.match(e.request).then((r) => r || fetch(e.request)));
+  e.respondWith(
+    caches.open(CACHE).then((cache) =>
+      cache.match(e.request).then((cached) => {
+        const networkFetch = fetch(e.request).then((response) => {
+          cache.put(e.request, response.clone());
+          return response;
+        }).catch(() => cached);  // offline fallback
+        return cached || networkFetch;
+      })
+    )
+  );
 });
