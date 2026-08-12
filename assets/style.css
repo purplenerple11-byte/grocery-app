@@ -26,7 +26,10 @@ button { font-family: var(--sans); cursor: pointer; }
 .appbar { padding: 20px 18px 8px; display: flex; align-items: baseline; gap: 10px; }
 .appbar h1 { font-size: 24px; }
 .appbar .sub { font-size: 12px; color: var(--muted); }
-#settings-btn { margin-left: auto; background: none; border: 1px solid var(--hairline); color: var(--muted); border-radius: 8px; padding: 4px 10px; font-size: 14px; }
+/* Sits before the gear and takes the auto margin, so the gear stays hard
+   right and the pair reads as one group. */
+#recipes-link { margin-left: auto; border: 1px solid var(--hairline); color: var(--muted); border-radius: 8px; padding: 4px 10px; font-size: 14px; text-decoration: none; }
+#settings-btn { background: none; border: 1px solid var(--hairline); color: var(--muted); border-radius: 8px; padding: 4px 10px; font-size: 14px; }
 
 #add-form { padding: 8px 16px 4px; }
 #add-input {
