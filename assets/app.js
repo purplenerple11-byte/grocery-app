@@ -1740,6 +1740,32 @@ async function boot() {
   state.meals = Store.live(Store.normalizeMeals(await DB.getSetting('meals', [])));
   state.displayName = await DB.getSetting('displayName', '');
   render();
+
+  // ── Import from URL fragment (Recipe Holder integration) ──
+  // Recipe Holder links here with #import=<base64 JSON> to push ingredients
+  // into the list as tracked items plus a saved meal.
+  const hashMatch = location.hash.match(/^#import=(.+)$/);
+  if (hashMatch) {
+    history.replaceState(null, '', location.pathname);
+    try {
+      const data = JSON.parse(atob(decodeURIComponent(hashMatch[1])));
+      if (Store.validateMergeImport(data)) {
+        const { items, meals, stats } = Store.mergeImport(state.items, state.meals, data);
+        if (await commitAll(items, meals)) {
+          const parts = [`Added ${stats.added}`, `updated ${stats.updated}`];
+          if (stats.skipped) parts.push(`skipped ${stats.skipped}`);
+          showBanner(parts.join(', ') + '.');
+        } else {
+          showBanner('Import failed — data unchanged.');
+        }
+      } else {
+        showBanner('Import failed: invalid data.');
+      }
+    } catch {
+      showBanner('Import failed: could not read data.');
+    }
+  }
+
   if ('serviceWorker' in navigator) navigator.serviceWorker.register('./sw.js');
   bootSync();
 }
