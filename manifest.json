@@ -1,7 +1,8 @@
 {
   "name": "Grocery",
   "short_name": "Grocery",
-  "start_url": ".",
+  "start_url": "/",
+  "scope": "/",
   "display": "standalone",
   "background_color": "#141413",
   "theme_color": "#141413",
