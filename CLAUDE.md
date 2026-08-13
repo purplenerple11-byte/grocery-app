@@ -9,10 +9,13 @@ This file is only the things that are easy to get wrong.
 explicitly asked for one.** Develop on a branch if you like, but land it on
 `main` yourself rather than leaving it for review.
 
-⚠️ **`main` is production.** GitHub Pages deploys from `main` root, so every
+⚠️ **`main` is production.** Cloudflare Pages deploys from `main` root, so every
 push publishes to
-https://purplenerple11-byte.github.io/grocery-app/ within about a minute.
+https://grocery-app-rie.pages.dev/ within about a minute.
 Make sure the tests pass before merging.
+
+(This said GitHub Pages until 2026-08-13. It was never enabled — the
+github.io URL 404s and always has. HANDOFF.md had it right.)
 
 A merged pull request is finished — never reuse it or stack new commits on
 already-merged history. Start follow-up work from the latest `main`.

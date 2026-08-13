@@ -3,8 +3,14 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
-<meta name="theme-color" content="#141413">
+<meta name="theme-color" content="#C2410C">
 <title>Grocery</title>
+<!-- Before the stylesheet, and inline rather than a file: this has to run
+     before first paint or every cold load flashes the light theme before
+     settling on dark. A stored choice wins; otherwise follow the OS. -->
+<script>(function(){try{var t=localStorage.getItem("theme");
+var d=t?t==="dark":matchMedia("(prefers-color-scheme: dark)").matches;
+if(d)document.documentElement.classList.add("dark")}catch(e){}})()</script>
 <link rel="manifest" href="manifest.json">
 <link rel="apple-touch-icon" href="icons/icon-180.png">
 <link rel="stylesheet" href="assets/style.css">
@@ -134,6 +140,7 @@
       <label for="display-name-input">Your name</label>
       <input type="text" id="display-name-input" placeholder="e.g. Alex" autocomplete="off">
     </div>
+    <label class="check-label"><input type="checkbox" id="theme-toggle"> Dark mode</label>
     <section id="sync-panel" hidden>
       <h4 class="sync-head">Sync</h4>
       <div id="sync-body"></div>
@@ -145,7 +152,7 @@
     <label class="import-label btn-danger">Restore from backup<input type="file" id="restore-file" accept="application/json,.json" hidden></label>
     <p class="dialog-note">Add merges a file in (nothing is deleted). Restore replaces everything.</p>
     <button id="settings-close">Close</button>
-    <p class="dialog-note" style="text-align:center; margin-top:12px; opacity:.5;">v43</p>
+    <p class="dialog-note" style="text-align:center; margin-top:12px; opacity:.5;">v44</p>
   </menu>
 </dialog>
 
@@ -153,5 +160,35 @@
 <script src="assets/sync-config.js"></script>
 <script src="assets/sync.js"></script>
 <script src="assets/app.js"></script>
+<!-- Theme toggle. Inline, next to the pre-paint script it shares a storage key
+     with, rather than in app.js — the two are one thought. The checkbox reads
+     the DOM class instead of keeping its own state, so they cannot disagree. -->
+<script>
+(function () {
+  var root = document.documentElement;
+  var box = document.getElementById('theme-toggle');
+  var read = function () { try { return localStorage.getItem('theme'); } catch (e) { return null; } };
+
+  /* Re-read the class every time the sheet opens rather than trusting the
+     checkbox's own state, so a theme changed from anywhere else — the OS, a
+     second tab — can never show up here as the wrong switch position. */
+  var sync = function () { box.checked = root.classList.contains('dark'); };
+  sync();
+  document.getElementById('settings-btn').addEventListener('click', sync);
+
+  box.addEventListener('change', function () {
+    root.classList.toggle('dark', box.checked);
+    try { localStorage.setItem('theme', box.checked ? 'dark' : 'light'); } catch (e) {}
+  });
+
+  /* No stored choice means "follow the OS" — so keep following it, including
+     while the app is open. Once the toggle is used, the choice is sticky. */
+  matchMedia('(prefers-color-scheme: dark)').addEventListener('change', function (e) {
+    if (read()) return;
+    root.classList.toggle('dark', e.matches);
+    box.checked = e.matches;
+  });
+})();
+</script>
 </body>
 </html>

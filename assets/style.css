@@ -1,18 +1,61 @@
+/* Fraunces is self-hosted rather than pulled from Google: the app has to render
+   correctly offline, which means the font file must be precacheable by sw.js.
+   Latin subset only — 67KB is already the largest asset here, and the italic
+   file would double that for one 13px "added by" label, which the browser can
+   synthesise acceptably. */
+@font-face {
+  font-family: 'Fraunces';
+  src: url('fraunces-latin.woff2') format('woff2');
+  font-weight: 400 700;
+  font-style: normal;
+  font-display: swap;
+}
+
+/* House style (STYLE_GUIDE.md) — light is the default set, .dark inverts the
+   same ramp. Neutrals are stone: warm, so the page reads as paper. */
 :root {
-  --canvas: #0e0e0d; --surface: #2a2925; --surface-2: #333029;
-  --ink: #faf9f5; --muted: #ccc9be; --hairline: #555550;
-  --clay: #d97757; --clay-deep: #c6613f;
-  --ok: #7d9b76; --low: #d9a557; --out: #c6613f;
-  --serif: Georgia, "Source Serif Pro", Charter, serif;
+  /* Matched against Recipe Holder on-device, not against the guide's hex
+     column: the page is stone, a shade off white, and the cards are white.
+     The cream in §1 is the manifest's splash colour, not the page. */
+  --canvas: #f5f5f4; --surface: #ffffff; --surface-2: #ffffff;
+  --ink: #1c1917; --muted: #78716c; --hairline: #e7e5e4;
+  /* Hairlines and typeable borders are one step apart in the guide. At the
+     hairline weight an input's edge disappears against a white fill, so
+     anything you can type into takes the heavier line. */
+  --field-line: #d6d3d1;
+  /* --clay is the *primary fill* — Complete trip, Save, the checked circles —
+     and Recipe Holder's primary is stone-900, not the brand orange. The orange
+     survives where Recipe Holder puts it: the status bar and the manifest.
+     "One accent, one primary": everything filled here is the same near-black. */
+  --clay: #1c1917; --clay-deep: #44403c;
+  /* Stock state, not accent. Green / gold / red stay mutually distinguishable
+     at 9px and readable as text (--out is also the destructive colour). */
+  --ok: #4d7c0f; --low: #a16207; --out: #dc2626;
+  --serif: Fraunces, Georgia, "Source Serif Pro", Charter, serif;
   --sans: Inter, system-ui, -apple-system, Arial, sans-serif;
   /* Native controls (checkboxes) default to system blue — the one cool colour
-     in an all-warm palette. One line keeps them inside the accent family. */
+     in an all-warm palette. Pointing at the variable rather than a literal
+     keeps them inside the accent family in both themes. */
   accent-color: var(--clay);
+}
+
+/* Invert the whole ramp, never part of one: a half-inverted ramp is how you get
+   bright outlines on near-black text. Every pairing above keeps its contrast. */
+.dark {
+  --canvas: #3d3d3d; --surface: #4a4a4a; --surface-2: #4f4f4f;
+  --ink: #f8f8f8; --muted: #b4b4b4; --hairline: #5c5c5c;
+  --field-line: #6e6e6e;
+  /* The per-utility escape the guide warns about, and the reason --clay is a
+     variable rather than the same literal as --ink: both are stone-900 in
+     light, but inverted wholesale the primary button becomes near-white and
+     glares. Headings still want that contrast, so only the fill steps back. */
+  --clay: #d4d4d4; --clay-deep: #bdbdbd;
+  --ok: #8ec06d; --low: #e0b64a; --out: #ef6a5a;
 }
 * { box-sizing: border-box; margin: 0; padding: 0; }
 
-/* The UA default ring renders amber on this dark warm canvas, which reads as
-   the ochre "low stock" signal. Ink is neutral and unambiguous. */
+/* The UA default ring renders amber on a warm canvas, which reads as the ochre
+   "low stock" signal. Ink is neutral and unambiguous on either ground. */
 :focus-visible { outline: 2px solid var(--ink); outline-offset: 2px; }
 ::selection { background: var(--clay); color: var(--canvas); }
 html, body { height: 100%; }
@@ -28,13 +71,13 @@ button { font-family: var(--sans); cursor: pointer; }
 .appbar .sub { font-size: 12px; color: var(--muted); }
 /* Sits before the gear and takes the auto margin, so the gear stays hard
    right and the pair reads as one group. */
-#recipes-link { margin-left: auto; border: 1px solid var(--hairline); color: var(--muted); border-radius: 8px; padding: 4px 10px; font-size: 14px; text-decoration: none; }
-#settings-btn { background: none; border: 1px solid var(--hairline); color: var(--muted); border-radius: 8px; padding: 4px 10px; font-size: 14px; }
+#recipes-link { margin-left: auto; border: 1px solid var(--hairline); color: var(--muted); border-radius: 6px; padding: 4px 10px; font-size: 14px; text-decoration: none; }
+#settings-btn { background: none; border: 1px solid var(--hairline); color: var(--muted); border-radius: 6px; padding: 4px 10px; font-size: 14px; }
 
 #add-form { padding: 8px 16px 4px; }
 #add-input {
-  width: 100%; background: var(--surface); border: 1px solid var(--hairline);
-  border-radius: 12px; padding: 11px 14px; color: var(--ink); font-size: 16px; /* iOS zooms below 16px */
+  width: 100%; background: var(--surface); border: 1px solid var(--field-line);
+  border-radius: 6px; padding: 11px 14px; color: var(--ink); font-size: 16px; /* iOS zooms below 16px */
 }
 #add-input::placeholder { color: var(--muted); }
 
@@ -42,7 +85,7 @@ button { font-family: var(--sans); cursor: pointer; }
 .autocomplete-items {
   position: absolute; top: 100%; left: 0; right: 0; z-index: 99;
   background: var(--surface); border: 1px solid var(--hairline);
-  border-radius: 8px; margin-top: 4px; box-shadow: 0 4px 12px rgba(0,0,0,0.15);
+  border-radius: 12px; margin-top: 4px; box-shadow: 0 4px 12px rgba(0,0,0,0.15);
   max-height: 250px; overflow-y: auto;
 }
 .autocomplete-item {
@@ -89,8 +132,8 @@ button { font-family: var(--sans); cursor: pointer; }
 #complete-trip {
   position: fixed; left: 50%; transform: translateX(-50%); bottom: 78px; z-index: 5;
   background: var(--clay); color: var(--canvas); border: none; font-weight: 600; font-size: 15px;
-  padding: 12px 28px; border-radius: 0 0 8px 8px;
-  box-shadow: 0 4px 14px rgba(0, 0, 0, .35);
+  padding: 12px 28px; border-radius: 0 0 6px 6px;
+  box-shadow: 0 4px 14px rgba(0, 0, 0, .22);
 }
 #complete-trip:active { background: var(--clay-deep); }
 
@@ -103,7 +146,7 @@ button { font-family: var(--sans); cursor: pointer; }
 }
 #sheet.open { height: 86vh; }
 #sheet-bar { padding: 10px 18px 14px; flex: none; cursor: pointer; -webkit-user-select: none; user-select: none; touch-action: none; }
-.grabber { width: 42px; height: 4px; background: var(--hairline); border-radius: 2px; margin: 0 auto 8px; }
+.grabber { width: 42px; height: 4px; background: var(--field-line); border-radius: 2px; margin: 0 auto 8px; }
 .peek { display: flex; align-items: center; gap: 8px; font-size: 13px; }
 .peek strong { font-family: var(--serif); font-weight: 400; font-size: 16px; }
 .pill { display: inline-flex; align-items: center; gap: 5px; background: var(--surface); border: 1px solid var(--hairline); border-radius: 999px; padding: 3px 10px; font-size: 12px; color: var(--muted); }
@@ -152,7 +195,7 @@ button { font-family: var(--sans); cursor: pointer; }
 .tile-grid { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 6px; }
 .tile {
   aspect-ratio: 1; min-width: 0; overflow: hidden; position: relative;
-  background: var(--surface); border: 1px solid var(--hairline); border-radius: 14px;
+  background: var(--surface); border: 1px solid var(--hairline); border-radius: 12px;
   padding: 6px; display: flex; flex-direction: column; text-align: left; color: var(--ink);
   font-family: inherit;
   user-select: none; -webkit-user-select: none; -webkit-touch-callout: none;
@@ -216,7 +259,7 @@ button { font-family: var(--sans); cursor: pointer; }
 }
 #meals-tab .tab-grip {
   position: relative; margin-left: 6px;
-  width: 4px; height: 32px; background: var(--hairline); border-radius: 2px;
+  width: 4px; height: 32px; background: var(--field-line); border-radius: 2px;
 }
 #meals-tab[aria-expanded="true"] { opacity: 0; pointer-events: none; }
 
@@ -285,7 +328,7 @@ button { font-family: var(--sans); cursor: pointer; }
 
 dialog {
   background: var(--surface-2); color: var(--ink); border: 1px solid var(--hairline);
-  border-radius: 16px; padding: 20px; width: min(90vw, 360px); margin: auto;
+  border-radius: 12px; padding: 20px; width: min(90vw, 360px); margin: auto;
   /* Settings has grown past a small phone's viewport; without a cap the
      dialog overflows and the last controls become unreachable. */
   max-height: 85vh; overflow-y: auto;
@@ -295,8 +338,8 @@ dialog h3 { font-size: 20px; margin-bottom: 12px; }
 dialog label, dialog .field { display: block; font-size: 12px; color: var(--muted); margin-bottom: 10px; }
 dialog .field { position: relative; z-index: 1; }
 dialog input:not([type="checkbox"]), dialog select {
-  width: 100%; margin-top: 4px; background: var(--surface); border: 1px solid var(--hairline);
-  border-radius: 8px; padding: 9px 10px; color: var(--ink);
+  width: 100%; margin-top: 4px; background: var(--surface); border: 1px solid var(--field-line);
+  border-radius: 6px; padding: 9px 10px; color: var(--ink);
   /* 16px is a functional minimum, not a taste call: iOS Safari zooms the whole
      page whenever a focused input is smaller, which jerks the dialog around
      mid-typing and cannot be undone without a manual pinch. */
@@ -307,8 +350,8 @@ dialog input:not([type="checkbox"]), dialog select {
    position; Android's native popup drifts them inline next to the label.
    Matches the field styling above when closed, the preflight list when open. */
 .picker-btn {
-  width: 100%; margin-top: 4px; background: var(--surface); border: 1px solid var(--hairline);
-  border-radius: 8px; padding: 8px 10px; color: var(--ink); font-size: 14px;
+  width: 100%; margin-top: 4px; background: var(--surface); border: 1px solid var(--field-line);
+  border-radius: 6px; padding: 8px 10px; color: var(--ink); font-size: 14px;
   display: flex; align-items: center; gap: 8px; text-align: left;
 }
 .picker-btn::after {
@@ -319,9 +362,9 @@ dialog input:not([type="checkbox"]), dialog select {
 .picker-list {
   position: absolute; left: 0; right: 0; top: 100%; z-index: 10;
   max-height: 38vh; overflow-y: auto; margin-top: 2px;
-  border: 1px solid var(--hairline); border-radius: 8px;
+  border: 1px solid var(--hairline); border-radius: 12px;
   background: var(--surface); padding: 4px 0;
-  box-shadow: 0 6px 16px rgba(0,0,0,0.25);
+  box-shadow: 0 6px 16px rgba(0,0,0,0.22);
 }
 .picker-list[hidden] { display: none; }
 .picker-row {
@@ -358,7 +401,7 @@ dialog menu { display: flex; flex-direction: column; gap: 8px; margin-top: 14px;
 /* Pre-flight meal dialog */
 .preflight-list {
   max-height: 40vh; overflow-y: auto;
-  border: 1px solid var(--hairline); border-radius: 8px;
+  border: 1px solid var(--hairline); border-radius: 12px;
   background: var(--surface); padding: 4px 0; margin-bottom: 12px;
 }
 .preflight-row {
@@ -387,7 +430,7 @@ dialog menu { display: flex; flex-direction: column; gap: 8px; margin-top: 14px;
 .fly-clone {
   position: fixed; z-index: 9999; pointer-events: none;
   display: flex; align-items: center; gap: 11px; padding: 8px 12px;
-  background: var(--surface); border-radius: 8px;
+  background: var(--surface); border-radius: 12px;
   box-shadow: 0 4px 16px rgba(0,0,0,.12);
   font-family: var(--serif); font-size: 16px;
   white-space: nowrap; overflow: hidden;
@@ -409,10 +452,10 @@ dialog menu { display: flex; flex-direction: column; gap: 8px; margin-top: 14px;
 .hist-row .hist-date { margin-left: auto; font-size: 11px; }
 #item-form menu { flex-direction: row; }
 dialog menu button, .import-label {
-  padding: 9px 12px; border-radius: 8px; border: 1px solid var(--hairline);
+  padding: 9px 12px; border-radius: 6px; border: 1px solid var(--hairline);
   background: none; color: var(--ink); font-size: 14px; text-align: center; flex: 1;
 }
 .import-label { display: block; font-size: 14px !important; color: var(--ink) !important; margin: 0 !important; cursor: pointer; }
-.btn-clay { background: var(--clay); border: none !important; color: var(--canvas) !important; font-weight: 600; border-radius: 0 0 8px 8px !important; }
+.btn-clay { background: var(--clay); border: none !important; color: var(--canvas) !important; font-weight: 600; border-radius: 0 0 6px 6px !important; }
 .btn-danger { color: var(--out) !important; border-color: var(--out) !important; }
 .check-label { display: flex; align-items: center; gap: 8px; font-size: 13px; color: var(--ink); }
