@@ -140,7 +140,17 @@ if(d)document.documentElement.classList.add("dark")}catch(e){}})()</script>
       <label for="display-name-input">Your name</label>
       <input type="text" id="display-name-input" placeholder="e.g. Alex" autocomplete="off">
     </div>
-    <label class="check-label"><input type="checkbox" id="theme-toggle"> Dark mode</label>
+    <h4 class="settings-head">Appearance</h4>
+    <!-- The input stays the control (label, keyboard, checked state); .switch is
+         painted from its :checked state, so nothing here needs JS to look right. -->
+    <label class="setting-card">
+      <span class="setting-text">
+        <span class="setting-title">Dark mode</span>
+        <span class="setting-desc" id="theme-desc">Off — follows your system until you choose here.</span>
+      </span>
+      <input type="checkbox" id="theme-toggle" class="switch-input">
+      <span class="switch" aria-hidden="true"></span>
+    </label>
     <section id="sync-panel" hidden>
       <h4 class="sync-head">Sync</h4>
       <div id="sync-body"></div>
@@ -152,7 +162,7 @@ if(d)document.documentElement.classList.add("dark")}catch(e){}})()</script>
     <label class="import-label btn-danger">Restore from backup<input type="file" id="restore-file" accept="application/json,.json" hidden></label>
     <p class="dialog-note">Add merges a file in (nothing is deleted). Restore replaces everything.</p>
     <button id="settings-close">Close</button>
-    <p class="dialog-note" style="text-align:center; margin-top:12px; opacity:.5;">v44</p>
+    <p class="dialog-note" style="text-align:center; margin-top:12px; opacity:.5;">v45</p>
   </menu>
 </dialog>
 
@@ -172,13 +182,22 @@ if(d)document.documentElement.classList.add("dark")}catch(e){}})()</script>
   /* Re-read the class every time the sheet opens rather than trusting the
      checkbox's own state, so a theme changed from anywhere else — the OS, a
      second tab — can never show up here as the wrong switch position. */
-  var sync = function () { box.checked = root.classList.contains('dark'); };
+  var desc = document.getElementById('theme-desc');
+  var sync = function () {
+    box.checked = root.classList.contains('dark');
+    /* Name the state, then say who is driving it. Until the toggle is touched
+       there is no stored choice and the OS still wins, which is worth saying
+       once rather than letting the switch look like it drifts on its own. */
+    desc.textContent = (box.checked ? 'On' : 'Off') +
+      (read() ? '' : ' — follows your system until you choose here.');
+  };
   sync();
   document.getElementById('settings-btn').addEventListener('click', sync);
 
   box.addEventListener('change', function () {
     root.classList.toggle('dark', box.checked);
     try { localStorage.setItem('theme', box.checked ? 'dark' : 'light'); } catch (e) {}
+    sync();
   });
 
   /* No stored choice means "follow the OS" — so keep following it, including
@@ -186,7 +205,7 @@ if(d)document.documentElement.classList.add("dark")}catch(e){}})()</script>
   matchMedia('(prefers-color-scheme: dark)').addEventListener('change', function (e) {
     if (read()) return;
     root.classList.toggle('dark', e.matches);
-    box.checked = e.matches;
+    sync();
   });
 })();
 </script>

@@ -19,6 +19,11 @@
      The cream in §1 is the manifest's splash colour, not the page. */
   --canvas: #f5f5f4; --surface: #ffffff; --surface-2: #ffffff;
   --ink: #1c1917; --muted: #78716c; --hairline: #e7e5e4;
+  /* On the page, a card is white against stone. Inside a white container —
+     the sheet, the drawer, a dialog — that relationship has no room left, so
+     the thing *inside* steps down instead of up. One rule, both directions:
+     a container is white, what sits in it is --fill. */
+  --fill: #f0efed;
   /* Hairlines and typeable borders are one step apart in the guide. At the
      hairline weight an input's edge disappears against a white fill, so
      anything you can type into takes the heavier line. */
@@ -44,6 +49,9 @@
 .dark {
   --canvas: #3d3d3d; --surface: #4a4a4a; --surface-2: #4f4f4f;
   --ink: #f8f8f8; --muted: #b4b4b4; --hairline: #5c5c5c;
+  /* Dark already had the headroom light did not: a container is #4f4f4f and
+     what sits in it steps down to #4a4a4a on its own. */
+  --fill: #4a4a4a;
   --field-line: #6e6e6e;
   /* The per-utility escape the guide warns about, and the reason --clay is a
      variable rather than the same literal as --ink: both are stone-900 in
@@ -149,7 +157,7 @@ button { font-family: var(--sans); cursor: pointer; }
 .grabber { width: 42px; height: 4px; background: var(--field-line); border-radius: 2px; margin: 0 auto 8px; }
 .peek { display: flex; align-items: center; gap: 8px; font-size: 13px; }
 .peek strong { font-family: var(--serif); font-weight: 400; font-size: 16px; }
-.pill { display: inline-flex; align-items: center; gap: 5px; background: var(--surface); border: 1px solid var(--hairline); border-radius: 999px; padding: 3px 10px; font-size: 12px; color: var(--muted); }
+.pill { display: inline-flex; align-items: center; gap: 5px; background: var(--fill); border: 1px solid var(--hairline); border-radius: 999px; padding: 3px 10px; font-size: 12px; color: var(--muted); }
 .dot { width: 9px; height: 9px; border-radius: 50%; flex: none; display: inline-block; }
 .dot.ok { background: var(--ok); } .dot.low { background: var(--low); } .dot.out { background: var(--out); }
 /* Syncing is a mode, not a stock status, so it takes the neutral hue rather
@@ -195,7 +203,7 @@ button { font-family: var(--sans); cursor: pointer; }
 .tile-grid { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 6px; }
 .tile {
   aspect-ratio: 1; min-width: 0; overflow: hidden; position: relative;
-  background: var(--surface); border: 1px solid var(--hairline); border-radius: 12px;
+  background: var(--fill); border: 1px solid var(--hairline); border-radius: 12px;
   padding: 6px; display: flex; flex-direction: column; text-align: left; color: var(--ink);
   font-family: inherit;
   user-select: none; -webkit-user-select: none; -webkit-touch-callout: none;
@@ -295,7 +303,7 @@ button { font-family: var(--sans); cursor: pointer; }
 #meals-list { overflow-y: auto; padding: 6px 10px 20px; }
 
 .meal {
-  display: block; width: 100%; text-align: left; background: var(--surface);
+  display: block; width: 100%; text-align: left; background: var(--fill);
   border: 1px solid var(--hairline); border-radius: 12px;
   padding: 9px 12px; margin-top: 6px; color: var(--ink);
   user-select: none; -webkit-user-select: none; -webkit-touch-callout: none;
@@ -363,7 +371,7 @@ dialog input:not([type="checkbox"]), dialog select {
   position: absolute; left: 0; right: 0; top: 100%; z-index: 10;
   max-height: 38vh; overflow-y: auto; margin-top: 2px;
   border: 1px solid var(--hairline); border-radius: 12px;
-  background: var(--surface); padding: 4px 0;
+  background: var(--fill); padding: 4px 0;
   box-shadow: 0 6px 16px rgba(0,0,0,0.22);
 }
 .picker-list[hidden] { display: none; }
@@ -392,6 +400,41 @@ dialog input:not([type="checkbox"]), dialog select {
   width: 100%; background: none; border: none; border-top: 1px solid var(--hairline);
   color: var(--muted); font-family: var(--serif); font-size: 16px; text-align: left;
 }
+/* Settings sections, matching Recipe Holder: an uppercase marker over a card
+   that holds the control, rather than a bare checkbox in a stack of buttons.
+   Same shape as .sync-head, which already did this for Sync. */
+.settings-head {
+  font-size: 13px; font-weight: 600; color: var(--muted); text-transform: uppercase;
+  letter-spacing: .08em; margin: 6px 0 2px;
+}
+/* Beats `dialog label { display: block; font-size: 12px; color: var(--muted) }` */
+.setting-card {
+  display: flex !important; align-items: center; gap: 12px;
+  background: var(--fill); border: 1px solid var(--hairline); border-radius: 12px;
+  padding: 12px 14px; cursor: pointer;
+  user-select: none; -webkit-user-select: none;
+}
+.setting-text { flex: 1; min-width: 0; }
+.setting-title { display: block; font-size: 15px; color: var(--ink); }
+.setting-desc { display: block; font-size: 12px; color: var(--muted); line-height: 1.4; margin-top: 2px; }
+
+/* Off-screen rather than display:none — a hidden input is not focusable, and
+   the switch has no other keyboard affordance. */
+.switch-input { position: absolute; opacity: 0; pointer-events: none; }
+.switch {
+  flex: none; position: relative; width: 46px; height: 28px; border-radius: 999px;
+  background: var(--field-line); transition: background .18s ease;
+}
+.switch::after {
+  content: ''; position: absolute; top: 3px; left: 3px; width: 22px; height: 22px;
+  border-radius: 50%; background: var(--surface);
+  box-shadow: 0 1px 3px rgba(0, 0, 0, .28);
+  transition: transform .18s ease;
+}
+.switch-input:checked ~ .switch { background: var(--clay); }
+.switch-input:checked ~ .switch::after { transform: translateX(18px); }
+.switch-input:focus-visible ~ .switch { outline: 2px solid var(--ink); outline-offset: 2px; }
+
 dialog menu { display: flex; flex-direction: column; gap: 8px; margin-top: 14px; padding: 0; list-style: none; }
 .dialog-note { font-size: 12px; color: var(--muted); margin: -6px 0 12px; }
 
@@ -402,7 +445,7 @@ dialog menu { display: flex; flex-direction: column; gap: 8px; margin-top: 14px;
 .preflight-list {
   max-height: 40vh; overflow-y: auto;
   border: 1px solid var(--hairline); border-radius: 12px;
-  background: var(--surface); padding: 4px 0; margin-bottom: 12px;
+  background: var(--fill); padding: 4px 0; margin-bottom: 12px;
 }
 .preflight-row {
   display: flex; align-items: center; gap: 11px; padding: 8px 12px;
