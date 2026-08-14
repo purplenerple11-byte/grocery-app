@@ -47,6 +47,19 @@ if(d)document.documentElement.classList.add("dark")}catch(e){}})()</script>
     <h3>Meals</h3>
     <button id="meal-save" disabled>＋ Save list</button>
   </div>
+  <!-- type=search for the UA's own clear affordance; the drawer is narrow and
+       a separate clear button would crowd the field. Hidden by renderMeals
+       until there is something to search. -->
+  <div id="meal-search-row" hidden>
+    <!-- Inline SVG, not ⌕ (U+2315): that glyph is missing from enough system
+         fonts that it renders as a small off-baseline squiggle or a tofu box.
+         currentColor keeps it on the same token as the placeholder. -->
+    <svg class="search-icon" viewBox="0 0 16 16" aria-hidden="true" fill="none"
+         stroke="currentColor" stroke-width="1.6" stroke-linecap="round">
+      <circle cx="7" cy="7" r="4.5"></circle><path d="M10.4 10.4 14 14"></path>
+    </svg>
+    <input id="meal-search" type="search" placeholder="Search" aria-label="Search meals" autocomplete="off">
+  </div>
   <div id="meals-list"></div>
 </aside>
 <div id="meals-scrim" hidden></div>
@@ -134,7 +147,10 @@ if(d)document.documentElement.classList.add("dark")}catch(e){}})()</script>
 </dialog>
 
 <dialog id="settings-dialog" tabindex="-1">
-  <h3>Settings</h3>
+  <div class="dialog-head">
+    <h3>Settings</h3>
+    <button id="settings-close" class="dialog-x" aria-label="Close">✕</button>
+  </div>
   <menu>
     <div class="settings-field">
       <label for="display-name-input">Your name</label>
@@ -161,8 +177,7 @@ if(d)document.documentElement.classList.add("dark")}catch(e){}})()</script>
     <label class="import-label">Add from file<input type="file" id="merge-file" accept="application/json,.json" hidden></label>
     <label class="import-label btn-danger">Restore from backup<input type="file" id="restore-file" accept="application/json,.json" hidden></label>
     <p class="dialog-note">Add merges a file in (nothing is deleted). Restore replaces everything.</p>
-    <button id="settings-close">Close</button>
-    <p class="dialog-note" style="text-align:center; margin-top:12px; opacity:.5;">v45</p>
+    <p class="dialog-note" style="text-align:center; margin-top:12px; opacity:.5;">v46</p>
   </menu>
 </dialog>
 

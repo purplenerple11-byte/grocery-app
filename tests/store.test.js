@@ -355,6 +355,39 @@ test('mealSummary is a flat ingredient line', () => {
   assertEqual(Store.mealSummary(Store.createMeal('Gone', ['nope']), [a]), '', 'no survivors is an empty line');
 });
 
+test('searchMeals matches the meal name', () => {
+  const a = Store.createItem('Tortillas');
+  const tacos = Store.createMeal('Tacos', [a.id]), soup = Store.createMeal('Soup', [a.id]);
+  const meals = [tacos, soup];
+  assertEqual(Store.searchMeals(meals, [a], 'tac').map((m) => m.name), ['Tacos']);
+  assertEqual(Store.searchMeals(meals, [a], 'TAC').map((m) => m.name), ['Tacos'], 'case insensitive');
+  assertEqual(Store.searchMeals(meals, [a], '  tac  ').map((m) => m.name), ['Tacos'], 'query is trimmed');
+});
+
+test('searchMeals also matches an item inside the meal', () => {
+  const mince = Store.createItem('Mince'), oats = Store.createItem('Oats');
+  const items = [mince, oats];
+  const meals = [Store.createMeal('Thursday', [mince.id]), Store.createMeal('Breakfast', [oats.id])];
+  assertEqual(Store.searchMeals(meals, items, 'mince').map((m) => m.name), ['Thursday'],
+    'found by an ingredient, not by its name');
+});
+
+test('searchMeals returns everything for an empty query', () => {
+  const a = Store.createItem('Tortillas');
+  const meals = [Store.createMeal('Tacos', [a.id])];
+  assertEqual(Store.searchMeals(meals, [a], '').length, 1, 'empty query is not a filter');
+  assertEqual(Store.searchMeals(meals, [a], '   ').length, 1, 'whitespace is not a filter');
+  assertEqual(Store.searchMeals(meals, [a], undefined).length, 1, 'no query at all is not a filter');
+});
+
+test('searchMeals with no match is empty, and survives a deleted item', () => {
+  const a = Store.createItem('Tortillas');
+  const meals = [Store.createMeal('Tacos', [a.id]), Store.createMeal('Gone', ['nope'])];
+  assertEqual(Store.searchMeals(meals, [a], 'zzz'), [], 'no match is an empty list, not everything');
+  assertEqual(Store.searchMeals(meals, [], 'tac').map((m) => m.name), ['Tacos'],
+    'an item that no longer exists does not throw');
+});
+
 test('hasEnough only counts tracked items above the low mark', () => {
   const stocked = Store.createItem('Cumin', { tracked: true, stock: 4, lowAt: 1 });
   assertEqual(Store.hasEnough(stocked), true, 'well stocked');

@@ -300,6 +300,32 @@ button { font-family: var(--sans); cursor: pointer; }
   border: 1px solid var(--hairline); border-radius: 999px; padding: 3px 10px;
 }
 #meal-save:disabled { color: var(--muted); opacity: .5; cursor: default; }
+/* Subtle by construction: no box, no fill, just a glyph and a hairline under
+   the whole row. The drawer is 300px wide and the meals are the content — a
+   bordered field here would outweigh the things it searches. */
+#meal-search-row {
+  flex: none; display: flex; align-items: center; gap: 8px;
+  padding: 2px 14px; border-bottom: 1px solid var(--hairline);
+}
+#meal-search-row[hidden] { display: none; }
+.search-icon { width: 16px; height: 16px; color: var(--muted); flex: none; }
+#meal-search {
+  flex: 1; min-width: 0; background: none; border: none; padding: 11px 0;
+  color: var(--ink); font-family: var(--sans); font-size: 16px; /* iOS zooms below 16px */
+}
+#meal-search::placeholder { color: var(--muted); }
+#meal-search:focus { outline: none; }
+/* The ring belongs on the row, not the borderless input inside it. */
+#meal-search-row:focus-within { border-bottom-color: var(--ink); }
+/* WebKit's own clear button is a dark blob on dark ground; the glyph is
+   inherited from the text colour instead. */
+#meal-search::-webkit-search-cancel-button {
+  -webkit-appearance: none; appearance: none;
+  width: 16px; height: 16px; cursor: pointer;
+  background: currentColor; opacity: .45;
+  mask: url('data:image/svg+xml,<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 16 16"><path d="M4 4l8 8M12 4l-8 8" stroke="black" stroke-width="2" fill="none"/></svg>') center / contain no-repeat;
+}
+
 #meals-list { overflow-y: auto; padding: 6px 10px 20px; }
 
 .meal {
@@ -343,6 +369,18 @@ dialog {
 }
 dialog::backdrop { background: rgba(0, 0, 0, .55); }
 dialog h3 { font-size: 20px; margin-bottom: 12px; }
+/* Dismissal belongs at the top corner where a sheet's close always is, not at
+   the bottom of a scrolling stack of actions where you have to travel past
+   everything else to leave. */
+.dialog-head { display: flex; align-items: center; margin-bottom: 12px; }
+.dialog-head h3 { margin-bottom: 0; }
+.dialog-x {
+  margin: -10px -8px -10px auto; flex: none;
+  width: 44px; height: 44px;              /* the glyph is 15px; the target is not */
+  display: flex; align-items: center; justify-content: center;
+  background: none; border: none; border-radius: 6px;
+  color: var(--muted); font-size: 15px; line-height: 1; padding: 0;
+}
 dialog label, dialog .field { display: block; font-size: 12px; color: var(--muted); margin-bottom: 10px; }
 dialog .field { position: relative; z-index: 1; }
 dialog input:not([type="checkbox"]), dialog select {

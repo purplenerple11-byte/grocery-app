@@ -243,14 +243,26 @@ function renderSheet() {
         </div>`;
 }
 
+/* Lives outside renderMeals because renderMeals is called from render() on
+   every state change, and a filter you typed must survive saving a meal. */
+let mealQuery = '';
+
 function renderMeals() {
   document.getElementById('meal-save').disabled = !state.items.some((it) => it.onList);
   const el = document.getElementById('meals-list');
+  /* Nothing to search when there are no meals: the empty state is the whole
+     drawer, and a search field above it would be furniture. */
+  document.getElementById('meal-search-row').hidden = !state.meals.length;
   if (!state.meals.length) {
     el.innerHTML = '<div class="drawer-empty">No meals yet. Put a meal’s items on your list, then tap <strong>＋ Save list</strong> to keep it.</div>';
     return;
   }
-  el.innerHTML = state.meals.map((m) => {
+  const matches = Store.searchMeals(state.meals, state.items, mealQuery);
+  if (!matches.length) {
+    el.innerHTML = `<div class="drawer-empty">No meals match “${escapeHtml(mealQuery.trim())}”.</div>`;
+    return;
+  }
+  el.innerHTML = matches.map((m) => {
     const summary = Store.mealSummary(m, state.items);
     return `
       <button class="meal" data-meal-id="${m.id}">
@@ -1067,8 +1079,16 @@ function setDrawer(open) {
   drawer.inert = !open;
   document.getElementById('meals-tab').setAttribute('aria-expanded', String(open));
   document.getElementById('meals-scrim').hidden = !open;
+  /* Closing clears the filter. Re-opening the drawer to a list still narrowed
+     by something you typed a day ago reads as "my meals are gone". */
+  if (!open) { mealQuery = ''; document.getElementById('meal-search').value = ''; }
   if (open) renderMeals();
 }
+
+document.getElementById('meal-search').addEventListener('input', (e) => {
+  mealQuery = e.target.value;
+  renderMeals();
+});
 document.getElementById('meals-tab').addEventListener('click', () => setDrawer(true));
 document.getElementById('meals-scrim').addEventListener('click', () => setDrawer(false));
 

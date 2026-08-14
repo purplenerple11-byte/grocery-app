@@ -234,6 +234,19 @@ const Store = {
     return Store.mealItems(meal, items).map((i) => i.name).join(', ');
   },
 
+  /* Matches the meal's own name OR any item in it, because the thing you
+     remember about a saved meal is often an ingredient rather than whatever
+     you named it — "chicken" should find "Thursday". Same plain
+     trim/lowercase substring match the add-item autocomplete uses.
+     An empty query returns the list untouched rather than nothing. */
+  searchMeals(meals, items, query) {
+    const q = (query || '').trim().toLowerCase();
+    if (!q) return meals;
+    return meals.filter((m) =>
+      m.name.toLowerCase().includes(q) ||
+      Store.mealItems(m, items).some((i) => i.name.toLowerCase().includes(q)));
+  },
+
   /* "Already covered": tracked and above the low threshold. Untracked items
      carry no meaningful stock, so they're never considered covered. */
   hasEnough(item) {
