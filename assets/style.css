@@ -34,8 +34,11 @@
      "One accent, one primary": everything filled here is the same near-black. */
   --clay: #1c1917; --clay-deep: #44403c;
   /* Stock state, not accent. Green / gold / red stay mutually distinguishable
-     at 9px and readable as text (--out is also the destructive colour). */
-  --ok: #4d7c0f; --low: #a16207; --out: #dc2626;
+     at 9px and readable as text (--out is also the destructive colour).
+     --low is a dot only, never text, which is what lets it be this bright.
+     --out drops its blue channel to sit at hue 4° rather than red-600's 0° —
+     a pure-red hue this light reads pink against paper. */
+  --ok: #4d7c0f; --low: #e8c44e; --out: #d92310;
   --serif: Fraunces, Georgia, "Source Serif Pro", Charter, serif;
   --sans: Inter, system-ui, -apple-system, Arial, sans-serif;
   /* Native controls (checkboxes) default to system blue — the one cool colour
