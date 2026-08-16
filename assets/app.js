@@ -1,5 +1,5 @@
 /* UI layer. All data changes go through Store pure functions, then commit()/removeItems() persist. */
-const state = { items: [], meals: [], displayName: '' };
+const state = { items: [], meals: [], displayName: '', notesLastSeen: null };
 
 function currentCreatorName() {
   if (state.displayName) return state.displayName;
@@ -1313,6 +1313,63 @@ document.getElementById('settings-close').addEventListener('click', () => {
   document.getElementById('settings-dialog').close();
 });
 
+/* ---- What's new ----
+   PATCH_NOTES is plain data (assets/patch-notes.js); Store.unseenNotes decides
+   what is unread. The read marker persists in the `settings` store rather than
+   localStorage, so it travels with the rest of the app's state. */
+
+/* 'YYYY-MM-DD' must be given a time before Date parses it, or it is read as
+   UTC midnight and renders as the previous day for anyone west of Greenwich. */
+function formatNoteDate(iso) {
+  const d = new Date(`${iso}T00:00:00`);
+  if (Number.isNaN(d.getTime())) return iso;
+  return d.toLocaleDateString(undefined, { day: 'numeric', month: 'short', year: 'numeric' });
+}
+
+function refreshNewsDot() {
+  const unseen = Store.unseenNotes(PATCH_NOTES, state.notesLastSeen);
+  document.getElementById('settings-btn').classList.toggle('has-news', unseen.length > 0);
+  document.getElementById('notes-dot').hidden = unseen.length === 0;
+  document.getElementById('notes-desc').textContent = unseen.length
+    ? `${unseen.length} update${unseen.length === 1 ? '' : 's'} since you last looked.`
+    : 'See what changed in recent updates.';
+}
+
+function renderPatchNotes() {
+  // Snapshot the unread set before the read marker moves, so this viewing is
+  // the one that actually shows which entries were new.
+  const unseen = new Set(Store.unseenNotes(PATCH_NOTES, state.notesLastSeen).map((n) => n.date));
+  document.getElementById('notes-body').innerHTML = PATCH_NOTES.map((r) => `
+    <div class="note-release">
+      <div class="note-head">
+        <span class="note-date">${escapeHtml(formatNoteDate(r.date))}</span>
+        ${r.version ? `<span class="note-version">v${r.version}</span>` : ''}
+        ${unseen.has(r.date) ? '<span class="note-new">New</span>' : ''}
+      </div>
+      <ul class="note-list">
+        ${r.notes.map((n) => `<li>${escapeHtml(n)}</li>`).join('')}
+      </ul>
+    </div>`).join('');
+}
+
+async function markNotesSeen() {
+  const latest = Store.latestNoteDate(PATCH_NOTES);
+  if (!latest || state.notesLastSeen === latest) return;
+  state.notesLastSeen = latest;
+  try { await DB.putSetting('notes.lastSeen', latest); } catch (e) { /* read marker only */ }
+}
+
+document.getElementById('notes-btn').addEventListener('click', async () => {
+  renderPatchNotes();
+  openModal(document.getElementById('notes-dialog'));
+  await markNotesSeen();
+  refreshNewsDot();
+});
+
+document.getElementById('notes-close').addEventListener('click', () => {
+  document.getElementById('notes-dialog').close();
+});
+
 function downloadJson(text, filename) {
   const blob = new Blob([text], { type: 'application/json' });
   const a = document.createElement('a');
@@ -1759,6 +1816,13 @@ async function boot() {
   // sync had not yet delivered would be permanently stripped from its meals.
   state.meals = Store.live(Store.normalizeMeals(await DB.getSetting('meals', [])));
   state.displayName = await DB.getSetting('displayName', '');
+  /* A device that has never recorded a read marker is treated as up to date
+     rather than as having every release unread — "9 updates since you last
+     looked" on a fresh install is noise, not news. Stamping it now is what
+     makes the *next* release show a badge. */
+  state.notesLastSeen = await DB.getSetting('notes.lastSeen', null);
+  if (!state.notesLastSeen) await markNotesSeen();
+  refreshNewsDot();
   render();
 
   // ── Import from URL fragment (Recipe Holder integration) ──

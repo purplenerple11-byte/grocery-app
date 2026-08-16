@@ -1,11 +1,11 @@
-const CACHE = 'grocery-v49';
+const CACHE = 'grocery-v50';
 const ASSETS = [
   './', './index.html', './manifest.json',
   './assets/style.css', './assets/store.js', './assets/app.js',
   // Self-hosted so the serif survives offline. A missing font here would not
   // fail loudly — it would silently fall back to Georgia on the device only.
   './assets/fraunces-latin.woff2',
-  './assets/sync-config.js', './assets/sync.js',
+  './assets/patch-notes.js', './assets/sync-config.js', './assets/sync.js',
   // Vendored rather than hotlinked: addAll cannot precache a cross-origin
   // script (opaque responses fail the install), and the app must boot offline.
   './assets/vendor/supabase-js-2.111.0.js',

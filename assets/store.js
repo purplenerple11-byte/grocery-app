@@ -283,6 +283,29 @@ const Store = {
      backup on one device does not propagate deletes to another, because the
      tombstones aren't in the file. Restore is already destructive and
      explicit, so that's the right trade. */
+  /* ---- What's new ----
+     Entries are identified by their ISO `date`, not by `version`: the version
+     number only became user-visible at v39, so older entries legitimately have
+     none. ISO dates also compare correctly as plain strings, so this needs no
+     Date parsing and cannot drift with the device's timezone.
+
+     `lastSeen` is the newest date the user has already read, or null for
+     someone who has never opened the page — who is shown no badge at all,
+     since "everything is new" is noise on a first run, not news. */
+  unseenNotes(notes, lastSeen) {
+    if (!Array.isArray(notes)) return [];
+    if (!lastSeen) return [];
+    return notes.filter((n) => n && typeof n.date === 'string' && n.date > lastSeen);
+  },
+
+  /* Newest entry's date — what gets stored once the page has been read. Not
+     assumed to be notes[0]: a mis-ordered file would otherwise mark newer
+     entries as already seen and they could never be surfaced again. */
+  latestNoteDate(notes) {
+    if (!Array.isArray(notes) || !notes.length) return null;
+    return notes.reduce((max, n) => (n && typeof n.date === 'string' && n.date > max ? n.date : max), '');
+  },
+
   serialize(items, meals = []) {
     return JSON.stringify({ version: 3, items: Store.live(items), meals: Store.live(meals) }, null, 2);
   },

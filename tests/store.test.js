@@ -1486,3 +1486,55 @@ test('an empty joining device needs no question at all', async () => {
   assertEqual(await Sync.hasLocalData(), false, 'nothing to ask about, so the UI skips the prompt');
   resetSync();
 });
+
+/* ---- What's new ---- */
+
+test('unseenNotes returns only entries newer than the read marker', () => {
+  const notes = [
+    { date: '2026-08-15', notes: ['c'] },
+    { date: '2026-08-12', notes: ['b'] },
+    { date: '2026-08-09', notes: ['a'] }
+  ];
+  assertEqual(Store.unseenNotes(notes, '2026-08-12').map((n) => n.date), ['2026-08-15']);
+  assertEqual(Store.unseenNotes(notes, '2026-08-01').length, 3);
+  assertEqual(Store.unseenNotes(notes, '2026-08-15').length, 0, 'caught up');
+});
+
+test('unseenNotes treats a device with no marker as up to date', () => {
+  // A fresh install must not announce "9 updates since you last looked" —
+  // boot() stamps the marker instead, so the NEXT release is what shows.
+  const notes = [{ date: '2026-08-15', notes: ['x'] }];
+  assertEqual(Store.unseenNotes(notes, null).length, 0);
+  assertEqual(Store.unseenNotes(notes, undefined).length, 0);
+  assertEqual(Store.unseenNotes(notes, '').length, 0);
+});
+
+test('unseenNotes survives junk input', () => {
+  assertEqual(Store.unseenNotes(null, '2026-01-01'), []);
+  assertEqual(Store.unseenNotes([null, { date: 5 }, { no: 'date' }], '2026-01-01'), []);
+});
+
+test('latestNoteDate takes the max, not the first entry', () => {
+  // A mis-ordered file would otherwise stamp an older date as "seen", and the
+  // newer entries could never surface again.
+  const jumbled = [
+    { date: '2026-08-09', notes: ['a'] },
+    { date: '2026-08-15', notes: ['c'] },
+    { date: '2026-08-12', notes: ['b'] }
+  ];
+  assertEqual(Store.latestNoteDate(jumbled), '2026-08-15');
+  assertEqual(Store.latestNoteDate([]), null);
+  assertEqual(Store.latestNoteDate(null), null);
+});
+
+test('PATCH_NOTES is well-formed and ordered newest first', () => {
+  assert(Array.isArray(PATCH_NOTES) && PATCH_NOTES.length > 0, 'has entries');
+  for (const r of PATCH_NOTES) {
+    assert(/^\d{4}-\d{2}-\d{2}$/.test(r.date), `ISO date, got ${r.date}`);
+    assert(Array.isArray(r.notes) && r.notes.length > 0, `${r.date} has notes`);
+    assert(r.notes.every((n) => typeof n === 'string' && n.trim()), `${r.date} notes are non-empty strings`);
+    assert(r.version === undefined || Number.isInteger(r.version), `${r.date} version is an int if present`);
+  }
+  const dates = PATCH_NOTES.map((r) => r.date);
+  assertEqual(dates, [...dates].sort().reverse(), 'newest first');
+});

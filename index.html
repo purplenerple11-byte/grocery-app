@@ -179,11 +179,28 @@ if(d)document.documentElement.classList.add("dark")}catch(e){}})()</script>
     <label class="import-label">Add from file<input type="file" id="merge-file" accept="application/json,.json" hidden></label>
     <label class="import-label btn-danger">Restore from backup<input type="file" id="restore-file" accept="application/json,.json" hidden></label>
     <p class="dialog-note">Add merges a file in (nothing is deleted). Restore replaces everything.</p>
-    <p class="dialog-note" style="text-align:center; margin-top:12px; opacity:.5;">v49</p>
+    <h4 class="settings-head">About</h4>
+    <button type="button" id="notes-btn" class="setting-card">
+      <span class="setting-text">
+        <span class="setting-title">What’s new<span id="notes-dot" class="new-dot" hidden></span></span>
+        <span class="setting-desc" id="notes-desc">See what changed in recent updates.</span>
+      </span>
+      <span class="setting-chevron" aria-hidden="true">›</span>
+    </button>
+    <p class="dialog-note" style="text-align:center; margin-top:12px; opacity:.5;">v50</p>
   </menu>
 </dialog>
 
+<dialog id="notes-dialog" tabindex="-1">
+  <div class="dialog-head">
+    <h3>What’s new</h3>
+    <button id="notes-close" class="dialog-x" aria-label="Close">✕</button>
+  </div>
+  <div id="notes-body" class="notes-body"></div>
+</dialog>
+
 <script src="assets/store.js"></script>
+<script src="assets/patch-notes.js"></script>
 <script src="assets/sync-config.js"></script>
 <script src="assets/sync.js"></script>
 <script src="assets/app.js"></script>
