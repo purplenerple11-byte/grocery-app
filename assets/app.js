@@ -297,6 +297,35 @@ async function saveMeals(ids, tombstone = null) {
   }
 }
 
+/* ── Hand the Recipes link to the installed app, not to a Custom Tab ──
+   `target="_blank"` is not enough and never was: a new context opened from a
+   standalone PWA is still opened *by Chrome*, and Chrome renders an
+   out-of-scope URL in an in-app Custom Tab — the browser bar pinned over the
+   top that this link keeps landing in.
+
+   An `intent://` URL is handled by Android instead of by Chrome, so the OS
+   gets to resolve it and can route it to the installed Recipe Box WebAPK.
+   `S.browser_fallback_url` makes the failure case exactly today's behaviour,
+   so this is never worse than the plain link.
+
+   Applied at runtime and only on Android: the href in the HTML stays a real
+   https URL, so desktop, iOS, and a JS failure all keep working.
+
+   ⚠ This cannot work alone. Android still only routes the intent to the app if
+   that app is allowed to capture its links — Settings → Apps → Recipe Box →
+   Open by default → "Open supported links". That is off by default on many
+   phones and is not something a website can set. */
+(() => {
+  const link = document.getElementById('recipes-link');
+  if (!link || !/Android/i.test(navigator.userAgent)) return;
+  const https = link.href;                       // capture before rewriting
+  const u = new URL(https);
+  link.href =
+    `intent://${u.host}${u.pathname}${u.search}` +
+    '#Intent;scheme=https;action=android.intent.action.VIEW;' +
+    `S.browser_fallback_url=${encodeURIComponent(https)};end`;
+})();
+
 /* ── Intelligent auto-complete for the add-item input ── */
 (() => {
   const addInput = document.getElementById('add-input');

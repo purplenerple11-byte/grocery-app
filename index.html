@@ -23,9 +23,9 @@ if(d)document.documentElement.classList.add("dark")}catch(e){}})()</script>
 <header class="appbar">
   <h1>Shopping List</h1>
   <span class="sub" id="list-sub"></span>
-  <!-- target=_blank so Android hands this to the installed Recipe Holder app.
-       A same-context navigation out of this PWA's scope is rendered by Chrome
-       in an in-app Custom Tab, with a browser bar pinned over the top. -->
+  <!-- Stays a plain https URL here so desktop, iOS and a JS failure all work.
+       On Android app.js rewrites this to an intent:// URL, because target=_blank
+       alone still lands in an in-app Custom Tab — see the note there. -->
   <a id="recipes-link" href="https://recipe-holder-eight.vercel.app/recipes" target="_blank" rel="noopener">Recipes</a>
   <button id="settings-btn" aria-label="Settings">⚙</button>
 </header>
@@ -187,7 +187,7 @@ if(d)document.documentElement.classList.add("dark")}catch(e){}})()</script>
       </span>
       <span class="setting-chevron" aria-hidden="true">›</span>
     </button>
-    <p class="dialog-note" style="text-align:center; margin-top:12px; opacity:.5;">v50</p>
+    <p class="dialog-note" style="text-align:center; margin-top:12px; opacity:.5;">v51</p>
   </menu>
 </dialog>
 
