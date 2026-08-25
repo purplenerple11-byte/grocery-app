@@ -1538,3 +1538,86 @@ test('PATCH_NOTES is well-formed and ordered newest first', () => {
   const dates = PATCH_NOTES.map((r) => r.date);
   assertEqual(dates, [...dates].sort().reverse(), 'newest first');
 });
+
+test('createItem defaults listStore to empty', () => {
+  assertEqual(Store.createItem('Milk').listStore, '');
+  assertEqual(Store.createItem('Milk', { listStore: 'Hannaford' }).listStore, 'Hannaford');
+});
+
+test('listRoster unions stored roster with names actually in use', () => {
+  const items = [
+    Store.createItem('Milk', { onList: true, listStore: 'Hannaford' }),
+    Store.createItem('Rice', { onList: true, listStore: "BJ's Club" }),
+    Store.createItem('Soap', { onList: false, listStore: 'Target' })
+  ];
+  // Roster order wins for names it knows; in-use names it does not know append.
+  assertEqual(Store.listRoster(items, ["BJ's Club", 'Hannaford']), ["BJ's Club", 'Hannaford', 'Target']);
+  // An empty list survives because the roster remembers it.
+  assertEqual(Store.listRoster([], ['Hannaford', 'Empty']), ['Hannaford', 'Empty']);
+});
+
+test('listRoster preserves an unfamiliar store name from an import', () => {
+  const items = [Store.createItem('Kimchi', { onList: true, listStore: 'H Mart' })];
+  assert(Store.listRoster(items, []).includes('H Mart'), 'unknown store preserved, never coerced');
+});
+
+test('itemsForList returns only that list, and only on-list items', () => {
+  const items = [
+    Store.createItem('Milk', { onList: true, listStore: 'Hannaford' }),
+    Store.createItem('Rice', { onList: true, listStore: "BJ's Club" }),
+    Store.createItem('Soap', { onList: false, listStore: 'Hannaford' })
+  ];
+  const got = Store.itemsForList(items, 'Hannaford');
+  assertEqual(got.length, 1);
+  assertEqual(got[0].name, 'Milk');
+});
+
+test('nextList walks the roster and stops at both ends', () => {
+  const r = ['Hannaford', "BJ's Club", 'Target'];
+  assertEqual(Store.nextList(r, 'Hannaford', 1), "BJ's Club");
+  assertEqual(Store.nextList(r, "BJ's Club", -1), 'Hannaford');
+  assertEqual(Store.nextList(r, 'Target', 1), null, 'no wrap-around past the end');
+  assertEqual(Store.nextList(r, 'Hannaford', -1), null, 'no wrap-around before the start');
+  assertEqual(Store.nextList(r, 'Gone', 1), null, 'unknown current list');
+});
+
+test('renameList rewrites only that list and bumps updatedAt', () => {
+  const items = [
+    Store.createItem('Milk', { onList: true, listStore: 'Hanaford', updatedAt: 1 }),
+    Store.createItem('Rice', { onList: true, listStore: "BJ's Club", updatedAt: 1 })
+  ];
+  const next = Store.renameList(items, 'Hanaford', 'Hannaford');
+  assertEqual(next[0].listStore, 'Hannaford');
+  assert(next[0].updatedAt > 1, 'renamed item restamped');
+  assertEqual(next[1].listStore, "BJ's Club");
+  assertEqual(next[1].updatedAt, 1, 'untouched item not restamped');
+});
+
+test('clearList takes items off the list without destroying anything', () => {
+  const items = [
+    Store.createItem('Milk', { onList: true, checked: true, listQty: 3, listStore: 'Hannaford',
+                               tracked: true, stock: 2 }),
+    Store.createItem('Rice', { onList: true, listStore: "BJ's Club" })
+  ];
+  const next = Store.clearList(items, 'Hannaford');
+  assertEqual(next[0].onList, false);
+  assertEqual(next[0].checked, false);
+  assertEqual(next[0].listQty, 1);
+  assertEqual(next[0].stock, 2, 'stock untouched');
+  assertEqual(next[0].tracked, true, 'tracking untouched');
+  assertEqual(next[0].listStore, 'Hannaford', 'remembers where it was, so re-adding returns it');
+  assertEqual(next[1].onList, true, 'other list untouched');
+});
+
+test('moveItemToList sets the list and puts the item on it', () => {
+  const it = Store.createItem('Milk', { onList: true, listStore: 'Hannaford' });
+  const moved = Store.moveItemToList(it, "BJ's Club");
+  assertEqual(moved.listStore, "BJ's Club");
+  assertEqual(moved.onList, true);
+});
+
+test('sanitizeItemFields keeps a non-empty listStore and ignores a blank one', () => {
+  assertEqual(Store.sanitizeItemFields({ listStore: '  Hannaford ' }).listStore, 'Hannaford');
+  assertEqual('listStore' in Store.sanitizeItemFields({ listStore: '   ' }), false,
+    'blank must not blank an existing list, same rule as unit and category');
+});

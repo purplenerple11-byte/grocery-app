@@ -58,6 +58,65 @@ const Store = {
     return [...CATEGORY_ORDER, ...[...extra].sort((a, b) => a.localeCompare(b))];
   },
 
+  /* ── Lists ───────────────────────────────────────────────────────────────
+     A list is a name, not a record. The set of lists is whatever the items
+     say, unioned with a stored roster — the roster is what lets an EMPTY
+     list keep existing and keep its position. Deriving from items alone
+     would silently delete a list the moment you cleared it.
+
+     Unknown names are preserved verbatim, for the same reason unknown
+     categories are: an import must never have its data quietly rewritten. */
+  listRoster(items, roster = []) {
+    const out = [];
+    const seen = new Set();
+    for (const name of Array.isArray(roster) ? roster : []) {
+      if (typeof name === 'string' && name && !seen.has(name)) { seen.add(name); out.push(name); }
+    }
+    const extra = new Set();
+    for (const it of items || []) {
+      if (it && typeof it.listStore === 'string' && it.listStore && !seen.has(it.listStore)) {
+        extra.add(it.listStore);
+      }
+    }
+    return [...out, ...[...extra].sort((a, b) => a.localeCompare(b))];
+  },
+
+  itemsForList(items, name) {
+    return (items || []).filter((it) => it.onList && it.listStore === name);
+  },
+
+  /* Returns the neighbour, or null at either end — the caller turns a null
+     at the far end into the "+ New list" card. Deliberately does not wrap. */
+  nextList(roster, current, dir) {
+    const list = Array.isArray(roster) ? roster : [];
+    const i = list.indexOf(current);
+    if (i === -1) return null;
+    const j = i + (dir >= 0 ? 1 : -1);
+    return j >= 0 && j < list.length ? list[j] : null;
+  },
+
+  /* A rename rewrites every member, which is the price of storing the list
+     as a name rather than an id. Only members are restamped, so a rename
+     does not queue the whole item table into the outbox. */
+  renameList(items, from, to) {
+    return (items || []).map((it) =>
+      it.listStore === from ? Store.update(it, { listStore: to }) : it);
+  },
+
+  /* Deleting a list is exactly "swipe every item away": off the list,
+     unchecked, qty reset. Stock, tracking and listStore survive, so
+     re-adding an item returns it to the store it came from. */
+  clearList(items, name) {
+    return (items || []).map((it) =>
+      it.onList && it.listStore === name
+        ? Store.update(it, { onList: false, checked: false, listQty: 1 })
+        : it);
+  },
+
+  moveItemToList(item, name) {
+    return Store.update(item, { listStore: name, onList: true });
+  },
+
   /* Every field is overridable, including the timestamps and `deletedAt`.
      That matters for sync: a record arriving from another device has to be
      reconstructable exactly as it was written there, and a hardcoded
@@ -74,6 +133,7 @@ const Store = {
       lowAt: opts.lowAt ?? 1,
       unit: opts.unit || '',
       onList: opts.onList ?? false,
+      listStore: opts.listStore || '',
       listQty: opts.listQty ?? 1,
       checked: opts.checked ?? false,
       prices: opts.prices ? [...opts.prices] : [],
@@ -439,6 +499,9 @@ const Store = {
     // Empty string means "unspecified", same as category — a merge must not use
     // it to blank a unit the item already has.
     if (typeof raw.unit === 'string' && raw.unit.trim()) f.unit = raw.unit.trim();
+    // Same rule as category and unit: blank means "unspecified", so a merge
+    // cannot use it to knock an item off the list it is already on.
+    if (typeof raw.listStore === 'string' && raw.listStore.trim()) f.listStore = raw.listStore.trim();
     const s = num(raw.stock); if (s !== null) f.stock = Math.max(0, Math.floor(s));
     const l = num(raw.lowAt); if (l !== null) f.lowAt = Math.max(0, Math.floor(l));
     const q = num(raw.listQty); if (q !== null) f.listQty = Math.max(1, Math.floor(q));
