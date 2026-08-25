@@ -91,7 +91,8 @@ button { font-family: var(--sans); cursor: pointer; }
 .appbar.armed { background: var(--fill); }
 .appbar h1 { font-size: 24px; line-height: 1.08; grid-column: 1; }
 .appbar .title-l2 { display: block; }
-.appbar h1 em { font-style: normal; font-size: 12px; color: var(--muted); font-weight: 400; }
+.appbar h1 em { font-style: normal; font-size: 12px; color: var(--muted); font-weight: 400; cursor: pointer; padding: 2px 4px; margin: -2px -4px; border-radius: 4px; }
+.appbar h1 em:active { background: var(--fill); }
 .appbar .sub { font-size: 12px; color: var(--muted); grid-column: 1; margin-top: 6px; }
 #list-dots { grid-column: 1 / -1; position: absolute; right: 18px; top: 22px;
              display: flex; gap: 5px; }
@@ -611,3 +612,12 @@ dialog menu button, .import-label {
 @media (prefers-reduced-motion: reduce) {
   #list.switching { transition: opacity 90ms linear; }
 }
+
+.list-row { display: flex; align-items: center; gap: 8px; padding: 8px 10px;
+            background: var(--fill); border-radius: 8px; margin-bottom: 6px; }
+.list-row .list-name { font-weight: 600; }
+.list-row .list-count { color: var(--muted); font-size: 12px; margin-left: auto; }
+.list-row button { border: 1px solid var(--hairline); background: var(--surface);
+                   color: var(--ink); border-radius: 6px; padding: 2px 8px; font-size: 13px; }
+.list-row button[disabled] { opacity: .35; }
+

@@ -1006,7 +1006,11 @@ function onLongPress(container, selector, handler) {
   window.switchList = function (dir) {
     if (animating) return;
     const next = Store.nextList(state.roster, state.currentList, dir);
-    if (next === null) return;
+    if (next === null) {
+      // Past the last list is a chance to make one. Past the first is nothing.
+      if (dir > 0) promptNewList();
+      return;
+    }
 
     const listEl = document.getElementById('list');
 
@@ -1100,6 +1104,22 @@ function onLongPress(container, selector, handler) {
   window.__setListAnimating = (v) => { animating = v; };  // Task 7 uses this
 })();
 
+document.getElementById('list-store').addEventListener('click', async (e) => {
+  e.stopPropagation();                     // do not arm the swipe
+  const from = state.currentList;
+  const raw = prompt('Rename this list', from);
+  if (raw === null || raw.trim() === from) return;
+  const check = Store.canAddList(state.roster.filter((n) => n !== from), raw);
+  if (!check.ok) { showBanner(check.reason); return; }
+  const to = raw.trim();
+  // Rewrites every member of the list — the price of storing a list as a name.
+  await commitAll(Store.renameList(state.items, from, to), null);
+  state.roster = state.roster.map((n) => (n === from ? to : n));
+  await saveRoster();
+  setCurrentList(to);
+});
+
+
 /* Collapsible inventory categories */
 const collapsedCats = new Set();
 
@@ -1190,6 +1210,49 @@ categoryList.addEventListener('click', (e) => {
   categoryBtn.focus();
 });
 
+/* ── List picker ──
+   Rows are radios named "list", so form.elements.list.value reports the
+   checked one. Built in openItemDialog from state.roster. */
+const listPicker = document.getElementById('list-picker');
+const listBtn = document.getElementById('list-btn');
+
+function setListChoice(value) {
+  document.getElementById('list-current').textContent = value;
+  const hit = [...listPicker.querySelectorAll('input[name="list"]')]
+    .find((r) => r.value === value);
+  if (hit) hit.checked = true;
+}
+
+function openListPicker(open) {
+  listPicker.hidden = !open;
+  listBtn.setAttribute('aria-expanded', String(open));
+  if (!open) return;
+  const checked = listPicker.querySelector('input:checked');
+  if (!checked) return;
+  checked.closest('.picker-row').scrollIntoView({ block: 'center' });
+  checked.focus();
+}
+
+function renderListChoices(current) {
+  const roster = state.roster.slice();
+  if (current && !roster.includes(current)) roster.push(current);
+  listPicker.innerHTML = roster.map((name) => `
+    <label class="picker-row">
+      <input type="radio" name="list" value="${escapeHtml(name)}"${name === current ? ' checked' : ''}>
+      <span class="picker-name">${escapeHtml(name)}</span>
+      <span class="picker-check"></span>
+    </label>`).join('');
+}
+
+listBtn.addEventListener('click', () => openListPicker(listPicker.hidden));
+
+listPicker.addEventListener('change', (e) => {
+  if (e.target.name !== 'list') return;
+  setListChoice(e.target.value);
+  openListPicker(false);
+  listBtn.focus();
+});
+
 /* `<dialog>.showModal()` focuses the first focusable descendant, which in most
    of these is a text input — so opening Settings or an item raised the phone
    keyboard over the content the user came to look at, and covered half the
@@ -1202,6 +1265,20 @@ categoryList.addEventListener('click', (e) => {
 
    `#meal-dialog` is deliberately NOT routed through here: its only purpose is
    typing a name, so the keyboard is the point. */
+/* A prompt(), not a dialog: naming a list is one field, and this app already
+   uses confirm() for the destructive paths. The card is not a list until it
+   is named — cancelling leaves the roster untouched. */
+async function promptNewList() {
+  const raw = prompt('Name the new list');
+  if (raw === null) return;
+  const check = Store.canAddList(state.roster, raw);
+  if (!check.ok) { showBanner(check.reason); return; }
+  const name = raw.trim();
+  state.roster = [...state.roster, name];
+  await saveRoster();
+  setCurrentList(name);
+}
+
 function openModal(el) {
   el.showModal();
   el.focus();
@@ -1219,6 +1296,12 @@ function openItemDialog(item) {
   renderCategoryList(current);
   setCategory(current);
   openCategoryList(false); // always starts collapsed
+
+  const currentList = (item && item.listStore) || state.currentList;
+  renderListChoices(currentList);
+  setListChoice(currentList);
+  openListPicker(false);
+
   form.elements.unit.value = item ? item.unit : '';
   form.elements.tracked.checked = item ? item.tracked : true;
   form.elements.stock.value = item ? item.stock : 0;
@@ -1242,6 +1325,7 @@ document.getElementById('item-form').addEventListener('submit', (e) => {
   const fields = {
     name: f.name.value.trim(),
     category: f.category.value,
+    listStore: f.list.value,
     unit: f.unit.value.trim(),
     tracked: f.tracked.checked,
     stock: Math.max(0, parseInt(f.stock.value, 10) || 0),
@@ -1488,9 +1572,59 @@ onLongPress(document.getElementById('list'), '.row', (el) => openItemDialog(find
 onLongPress(document.getElementById('inv-grid'), '.tile', (el) => openItemDialog(findItem(el)));
 document.getElementById('inv-add').addEventListener('click', () => openItemDialog(null));
 
+function renderListsManage() {
+  const el = document.getElementById('lists-manage');
+  if (!el) return;
+  el.innerHTML = state.roster.map((name, i) => {
+    const count = Store.itemsForList(state.items, name).length;
+    return `<div class="list-row" data-list="${escapeHtml(name)}">
+      <span class="list-name">${escapeHtml(name)}</span>
+      <span class="list-count">${count} item${count === 1 ? '' : 's'}</span>
+      <button data-act="up" ${i === 0 ? 'disabled' : ''} aria-label="Move up">↑</button>
+      <button data-act="down" ${i === state.roster.length - 1 ? 'disabled' : ''} aria-label="Move down">↓</button>
+      <button data-act="del" class="btn-danger" ${state.roster.length === 1 ? 'disabled' : ''}
+              aria-label="Delete list">✕</button>
+    </div>`;
+  }).join('');
+}
+
+document.getElementById('lists-manage').addEventListener('click', async (e) => {
+  const btn = e.target.closest('button');
+  if (!btn) return;
+  const name = btn.closest('.list-row').dataset.list;
+  const i = state.roster.indexOf(name);
+  const act = btn.dataset.act;
+
+  if (act === 'up' || act === 'down') {
+    const j = act === 'up' ? i - 1 : i + 1;
+    const next = [...state.roster];
+    [next[i], next[j]] = [next[j], next[i]];
+    state.roster = next;
+    await saveRoster();
+    renderListsManage();
+    render();
+    return;
+  }
+
+  if (act === 'del') {
+    const count = Store.itemsForList(state.items, name).length;
+    const msg = count
+      ? `Delete the ${name} list? ${count} item${count === 1 ? '' : 's'} will come off the list. Stock and inventory are not affected.`
+      : `Delete the ${name} list?`;
+    if (!confirm(msg)) return;
+    if (count) await commitAll(Store.clearList(state.items, name), null);
+    state.roster = state.roster.filter((n) => n !== name);
+    await saveRoster();
+    if (state.currentList === name) await setCurrentList(state.roster[0]);
+    renderListsManage();
+    render();
+  }
+});
+
 document.getElementById('settings-btn').addEventListener('click', () => {
   const nameInput = document.getElementById('display-name-input');
   if (nameInput) nameInput.value = state.displayName || '';
+  renderListsManage();
   openModal(document.getElementById('settings-dialog'));
 });
 

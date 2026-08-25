@@ -117,6 +117,20 @@ const Store = {
     return Store.update(item, { listStore: name, onList: true });
   },
 
+  /* 60 is not arbitrary: it is the check constraint on items.list_store.
+     Rejecting here means a too-long name never reaches PostgREST, where it
+     would fail the whole upsert batch. */
+  canAddList(roster, name) {
+    const trimmed = String(name ?? '').trim();
+    if (!trimmed) return { ok: false, reason: 'Give the list a name.' };
+    if (trimmed.length > 60) return { ok: false, reason: 'That name is too long.' };
+    const lower = trimmed.toLowerCase();
+    if ((roster || []).some((n) => n.trim().toLowerCase() === lower)) {
+      return { ok: false, reason: `You already have a ${trimmed} list.` };
+    }
+    return { ok: true, reason: '' };
+  },
+
   /* Every field is overridable, including the timestamps and `deletedAt`.
      That matters for sync: a record arriving from another device has to be
      reconstructable exactly as it was written there, and a hardcoded

@@ -1697,3 +1697,14 @@ test('a pre-lists local record and its server copy compare equal', () => {
   assert(Store.sameRecord(Store.normalizeShape(old), Store.normalizeShape(fromServer)),
     'must not re-queue forever — this is gotcha #9');
 });
+
+test('canAddList rejects blanks and duplicates, case-insensitively', () => {
+  const r = ['Hannaford'];
+  assertEqual(Store.canAddList(r, "BJ's Club").ok, true);
+  assertEqual(Store.canAddList(r, '   ').ok, false);
+  assertEqual(Store.canAddList(r, 'hannaford').ok, false, 'duplicate is rejected, never merged');
+  assertEqual(Store.canAddList(r, ' Hannaford ').ok, false);
+  assertEqual(Store.canAddList(r, 'x'.repeat(61)).ok, false, 'over the column check constraint');
+  assertEqual(Store.canAddList(r, 'x'.repeat(60)).ok, true);
+});
+

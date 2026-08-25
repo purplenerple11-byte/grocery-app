@@ -101,6 +101,13 @@ if(d)document.documentElement.classList.add("dark")}catch(e){}})()</script>
       </button>
       <div id="category-list" class="picker-list" hidden></div>
     </div>
+    <div class="field">List
+      <button type="button" id="list-btn" class="picker-btn"
+              aria-expanded="false" aria-controls="list-picker">
+        <span id="list-current"></span>
+      </button>
+      <div id="list-picker" class="picker-list" hidden></div>
+    </div>
     <label>Unit (label only) <input name="unit" placeholder="e.g. cartons"></label>
     <label class="check-label"><input type="checkbox" name="tracked"> Track in inventory</label>
     <label>Stock <input type="number" name="stock" min="0" value="0"></label>
@@ -175,6 +182,9 @@ if(d)document.documentElement.classList.add("dark")}catch(e){}})()</script>
       <input type="checkbox" id="theme-toggle" class="switch-input">
       <span class="switch" aria-hidden="true"></span>
     </label>
+    <h4 class="settings-head">Lists</h4>
+    <div id="lists-manage"></div>
+    <p class="dialog-note">Deleting a list takes its items off the list. Stock and inventory are not affected.</p>
     <section id="sync-panel" hidden>
       <h4 class="sync-head">Sync</h4>
       <div id="sync-body"></div>
