@@ -964,6 +964,64 @@ function onLongPress(container, selector, handler) {
   }, true);
 })();
 
+/* ── Swipe the header block to change lists ──────────────────────────────
+   The block, not the list body. A horizontal swipe on a ROW already means
+   delete — a row lifts after a 500ms hold or the instant it moves 6px
+   sideways, then flings off. Putting the pager on the block leaves that
+   gesture completely untouched.
+
+   Two input paths because a Mac and a phone deliver this differently:
+   wheel+deltaX is a trackpad two-finger swipe, pointer events are a finger
+   drag or a click-drag. Same threshold so both feel alike. */
+(function () {
+  const SWIPE_PX = 55;
+  const bar = document.querySelector('.appbar');
+  let animating = false;
+
+  function arm(on) { bar.classList.toggle('armed', !!on); }
+
+  window.switchList = function (dir) {
+    if (animating) return;
+    const next = Store.nextList(state.roster, state.currentList, dir);
+    if (next === null) return;   // no wrap-around; Task 8 adds the "+ New" card
+    setCurrentList(next);
+  };
+
+  /* Trackpad momentum keeps firing deltaX long after the fingers lift, so
+     one flick would otherwise fire three switches. Accumulate to the
+     threshold, act once, then stay locked until the stream goes quiet. */
+  let acc = 0, locked = false, quiet = null;
+  bar.addEventListener('wheel', (e) => {
+    if (Math.abs(e.deltaX) <= Math.abs(e.deltaY)) return;  // vertical: let it scroll
+    e.preventDefault();
+    clearTimeout(quiet);
+    quiet = setTimeout(() => { acc = 0; locked = false; arm(false); }, 280);
+    if (locked) return;
+    acc += e.deltaX;
+    arm(Math.abs(acc) > 12);
+    if (Math.abs(acc) > SWIPE_PX) { locked = true; arm(false); switchList(acc > 0 ? 1 : -1); }
+  }, { passive: false });
+
+  let x0 = null, fired = false;
+  bar.addEventListener('pointerdown', (e) => {
+    if (e.target.closest('button, a')) return;   // the gear and Recipes still work
+    x0 = e.clientX; fired = false;
+    try { bar.setPointerCapture(e.pointerId); } catch (_) {}
+  });
+  bar.addEventListener('pointermove', (e) => {
+    if (x0 === null || fired) return;
+    const dx = e.clientX - x0;
+    arm(Math.abs(dx) > 10);
+    if (Math.abs(dx) > SWIPE_PX) { fired = true; arm(false); switchList(dx < 0 ? 1 : -1); }
+  });
+  const end = () => { x0 = null; fired = false; arm(false); };
+  bar.addEventListener('pointerup', end);
+  bar.addEventListener('pointercancel', end);
+  bar.addEventListener('pointerleave', end);
+
+  window.__setListAnimating = (v) => { animating = v; };  // Task 7 uses this
+})();
+
 /* Collapsible inventory categories */
 const collapsedCats = new Set();
 
