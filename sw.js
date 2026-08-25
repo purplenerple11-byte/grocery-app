@@ -1,4 +1,4 @@
-const CACHE = 'grocery-v51';
+const CACHE = 'grocery-v52';
 const ASSETS = [
   './', './index.html', './manifest.json',
   './assets/style.css', './assets/store.js', './assets/app.js',

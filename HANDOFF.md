@@ -197,7 +197,8 @@ docs/superpowers/plans/    v1 implementation plan (historical)
 ```
 
 **Keep `store.js` pure** — it has no DOM access, which is why it's testable
-without a browser DB. Don't leak UI concerns into it.
+without a browser DB. Don't leak UI concerns into it. (V7 adds `item.listStore`,
+the six pure list functions, and list-scoped trip completion).
 
 ## Run + test
 
@@ -330,6 +331,22 @@ python3 -m http.server 8000        # from repo root; service worker needs http
 
 
 ## Status
+
+**V7 — per-store lists (built 2026-08-25).** One list per store; `item.listStore`
+holds the name. A list is a name, not a record — the roster of names lives in
+the `lists.roster` setting, which exists so an EMPTY list survives; non-empty
+lists are derivable from the items. Deliberately NOT a `lists` table: that
+would have meant new RLS policies, a third reconciler path and tombstones for
+lists, roughly doubling the feature for referential integrity over a handful of
+strings.
+
+The swipe lives on the header block, not the list body, because a horizontal
+swipe on a row already means delete. Do not move it onto the rows.
+
+`completeTrip` takes an optional third argument, the list name. Omitted, it
+behaves exactly as before — that is what keeps the pre-lists tests honest.
+
+Added `items.list_store` to the live table on 2026-08-25.
 
 **Shipped and live:** v1 (list, inventory sheet, trip loop, export/import, PWA),
 V2 (price + store history), V3 (saved meals), all five V4 items (merge import,
