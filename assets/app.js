@@ -1,5 +1,24 @@
 /* UI layer. All data changes go through Store pure functions, then commit()/removeItems() persist. */
-const state = { items: [], meals: [], displayName: '', notesLastSeen: null };
+const state = { items: [], meals: [], displayName: '', notesLastSeen: null, roster: [], currentList: '' };
+
+/* ── Lists ───────────────────────────────────────────────────────────────
+   The roster is the ordered set of list names. It is persisted separately
+   from the items because it is the ONLY record of a list with nothing on
+   it — a non-empty list is derivable from the items themselves. */
+const ROSTER_KEY = 'lists.roster';
+const CURRENT_KEY = 'lists.current';
+
+async function saveRoster() {
+  state.roster = Store.listRoster(state.items, state.roster);
+  try { await DB.putSetting(ROSTER_KEY, state.roster); }
+  catch (e) { showBanner('Save failed — changes may not persist.'); }
+}
+
+async function setCurrentList(name) {
+  state.currentList = name;
+  render();
+  try { await DB.putSetting(CURRENT_KEY, name); } catch (e) { /* view state only */ }
+}
 
 function currentCreatorName() {
   if (state.displayName) return state.displayName;
@@ -1852,6 +1871,36 @@ async function boot() {
   state.notesLastSeen = await DB.getSetting('notes.lastSeen', null);
   if (!state.notesLastSeen) await markNotesSeen();
   refreshNewsDot();
+
+  /* One-time migration. The owner's existing list IS the Hannaford list —
+     their decision, not a guess. The absence of the roster setting is the
+     "not yet migrated" marker.
+
+     Only ON-LIST items are stamped. Stamping every item would rewrite the
+     whole table and queue every record in the outbox to say nothing. An
+     off-list item picks up a list when it is next added. */
+  let roster = await DB.getSetting(ROSTER_KEY, null);
+  if (roster === null) {
+    const onList = state.items.filter((it) => it.onList && !it.listStore);
+    if (onList.length) {
+      const stamped = new Set(onList.map((it) => it.id));
+      await commitAll(
+        state.items.map((it) => stamped.has(it.id)
+          ? Store.update(it, { listStore: 'Hannaford' })
+          : it),
+        null
+      );
+    }
+    roster = ['Hannaford'];
+    await DB.putSetting(ROSTER_KEY, roster);
+  }
+  state.roster = Store.listRoster(state.items, roster);
+  if (!state.roster.length) state.roster = ['Hannaford'];
+
+  /* A list deleted on another device can leave a dangling current. */
+  const saved = await DB.getSetting(CURRENT_KEY, '');
+  state.currentList = state.roster.includes(saved) ? saved : state.roster[0];
+
   render();
 
   // ── Import from URL fragment (Recipe Holder integration) ──
