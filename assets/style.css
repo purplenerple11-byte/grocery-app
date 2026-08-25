@@ -605,3 +605,9 @@ dialog menu button, .import-label {
 .btn-clay { background: var(--clay); border: none !important; color: var(--canvas) !important; font-weight: 600; border-radius: 0 0 6px 6px !important; }
 .btn-danger { color: var(--out) !important; border-color: var(--out) !important; }
 .check-label { display: flex; align-items: center; gap: 8px; font-size: 13px; color: var(--ink); }
+
+/* The list-switch animation is driven by inline styles from app.js, so the
+   opt-out is a flag the script reads rather than a transition override. */
+@media (prefers-reduced-motion: reduce) {
+  #list.switching { transition: opacity 90ms linear; }
+}

@@ -980,11 +980,89 @@ function onLongPress(container, selector, handler) {
 
   function arm(on) { bar.classList.toggle('armed', !!on); }
 
+  /* ── The inhale ────────────────────────────────────────────────────────
+     Rows rise into the header block, squashing to a sliver; the block
+     relabels itself while the list is inside it, which is what sells the
+     block as the thing holding the list; the next list drops back out.
+
+     The stagger cap is load-bearing, not polish: uncapped, an 18-item list
+     takes three times as long as a 4-item one. Capped it costs ~170ms more.
+
+     The landing curve overshoots. That is deliberate and owner-chosen over
+     ease-out-expo, and it matches the row-swipe spring-back already
+     shipping at the bottom of the row-drag release handler. */
+  const OUT_MS = 140, OUT_STAGGER = 14, OUT_EASE = 'cubic-bezier(.55,.06,.68,.19)';
+  const IN_MS  = 170, IN_STAGGER  = 16, IN_EASE  = 'cubic-bezier(.22,.9,.31,1.18)';
+  const SQUASH = 'scale(0.55, 0.04)';
+  const STAGGER_CAP = 180;
+
+  const reduced = () => matchMedia('(prefers-reduced-motion: reduce)').matches;
+  const parts = (el) => [...el.querySelectorAll('.row, .cat')];
+  const dockY = () => {
+    const b = bar.getBoundingClientRect();
+    return b.top + b.height * 0.62;
+  };
+
   window.switchList = function (dir) {
     if (animating) return;
     const next = Store.nextList(state.roster, state.currentList, dir);
-    if (next === null) return;   // no wrap-around; Task 8 adds the "+ New" card
-    setCurrentList(next);
+    if (next === null) return;
+
+    const listEl = document.getElementById('list');
+
+    if (reduced()) { setCurrentList(next); return; }
+
+    animating = true;
+    const out = parts(listEl);
+    const n = out.length;
+    const outStep = n > 1 ? Math.min(OUT_STAGGER, STAGGER_CAP / (n - 1)) : 0;
+    const y = dockY();
+
+    out.forEach((el, i) => {
+      const r = el.getBoundingClientRect();
+      const dy = y - (r.top + r.height / 2);
+      const d = n - 1 - i;                       // bottom row leaves first
+      el.style.transformOrigin = '50% 50%';
+      el.style.transition =
+        `transform ${OUT_MS}ms ${OUT_EASE} ${d * outStep}ms, ` +
+        `opacity ${OUT_MS}ms linear ${d * outStep + OUT_MS * 0.35}ms`;
+      el.style.transform = `translate(0, ${dy}px) ${SQUASH}`;
+      el.style.opacity = '0';
+    });
+
+    setTimeout(() => {
+      state.currentList = next;
+      DB.putSetting(CURRENT_KEY, next).catch(() => {});
+      renderList();                              // relabels the block and the dots
+
+      const inn = parts(listEl);
+      const m = inn.length;
+      const inStep = m > 1 ? Math.min(IN_STAGGER, STAGGER_CAP / (m - 1)) : 0;
+      const y2 = dockY();
+
+      inn.forEach((el) => {
+        const r = el.getBoundingClientRect();
+        const dy = y2 - (r.top + r.height / 2);
+        el.style.transition = 'none';
+        el.style.transformOrigin = '50% 50%';
+        el.style.transform = `translate(0, ${dy}px) ${SQUASH}`;
+        el.style.opacity = '0';
+      });
+      void listEl.offsetHeight;                  // commit the "from" pose
+
+      inn.forEach((el, i) => {
+        el.style.transition =
+          `transform ${IN_MS}ms ${IN_EASE} ${i * inStep}ms, ` +
+          `opacity ${Math.round(IN_MS * 0.5)}ms linear ${i * inStep}ms`;
+        el.style.transform = '';
+        el.style.opacity = '1';
+      });
+
+      setTimeout(() => {
+        inn.forEach((el) => { el.style.transition = ''; el.style.transform = ''; el.style.opacity = ''; });
+        animating = false;
+      }, IN_MS + (m - 1) * inStep + 40);
+    }, OUT_MS + (n - 1) * outStep + 16);
   };
 
   /* Trackpad momentum keeps firing deltaX long after the fingers lift, so
