@@ -42,6 +42,9 @@ create table if not exists public.household_invites (
 -- id when crypto.randomUUID is missing, and Store.isUuid actually accepts
 -- ^[\w-]{1,64}$. Matching that here means existing local ids migrate verbatim
 -- with no remapping step.
+-- list_store added 2026-08-25 (per-store lists). Run against live projects:
+--   alter table public.items
+--     add column list_store text not null default '' check (char_length(list_store) <= 60);
 create table if not exists public.items (
   id                text primary key check (id ~ '^[\w-]{1,64}$'),
   household_id      uuid not null references public.households(id) on delete cascade,
@@ -54,6 +57,7 @@ create table if not exists public.items (
   on_list           boolean not null default false,
   list_qty          integer not null default 1 check (list_qty between 1 and 100000),
   checked           boolean not null default false,
+  list_store        text    not null default ''      check (char_length(list_store) <= 60),
   added_by          text    not null default '',
   prices            jsonb   not null default '[]'::jsonb
                       check (jsonb_typeof(prices) = 'array'

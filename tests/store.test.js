@@ -1668,3 +1668,32 @@ test('completeTrip records the price against the list being completed', () => {
   assertEqual(next[0].prices[0].price, 3.49);
   assertEqual(next[0].prices[0].store, 'Hannaford');
 });
+
+test('toItemRow and fromItemRow round-trip listStore', () => {
+  const it = Store.createItem('Milk', { listStore: 'Hannaford' });
+  const row = Store.toItemRow(it, 'hh-1');
+  assertEqual(row.list_store, 'Hannaford');
+  assertEqual(Store.fromItemRow(row).listStore, 'Hannaford');
+});
+
+test('toItemRow emits an empty list_store rather than undefined', () => {
+  const row = Store.toItemRow(Store.createItem('Milk'), 'hh-1');
+  assertEqual(row.list_store, '');
+});
+
+test('normalizeShape backfills listStore on a pre-lists record', () => {
+  // A record written before this feature has no such KEY. sameRecord compares
+  // key sets, so without the backfill it re-queues on every pull forever.
+  const old = Store.createItem('Milk');
+  delete old.listStore;
+  assertEqual(Store.normalizeShape(old).listStore, '');
+});
+
+test('a pre-lists local record and its server copy compare equal', () => {
+  const old = Store.createItem('Milk', { id: 'm1' });
+  delete old.listStore;
+  const fromServer = Store.fromItemRow(Store.toItemRow(Store.createItem('Milk', { id: 'm1',
+    createdAt: old.createdAt, updatedAt: old.updatedAt }), 'hh-1'));
+  assert(Store.sameRecord(Store.normalizeShape(old), Store.normalizeShape(fromServer)),
+    'must not re-queue forever — this is gotcha #9');
+});

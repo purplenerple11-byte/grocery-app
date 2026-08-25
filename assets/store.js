@@ -757,6 +757,7 @@ const Store = {
       name: item.name, category: item.category, unit: item.unit || '',
       tracked: !!item.tracked, stock: item.stock, low_at: item.lowAt,
       on_list: !!item.onList, list_qty: item.listQty, checked: !!item.checked,
+      list_store: item.listStore || '',
       prices: item.prices || [], added_by: item.addedBy || '',
       client_created_at: item.createdAt, client_updated_at: item.updatedAt,
       deleted_at: item.deletedAt ?? null
@@ -768,6 +769,7 @@ const Store = {
       id: row.id, category: row.category, unit: row.unit,
       tracked: row.tracked, stock: row.stock, lowAt: row.low_at,
       onList: row.on_list, listQty: row.list_qty, checked: row.checked,
+      listStore: row.list_store || '',
       prices: row.prices || [], addedBy: row.added_by || '',
       createdAt: row.client_created_at, updatedAt: row.client_updated_at,
       deletedAt: row.deleted_at ?? null
