@@ -81,13 +81,24 @@ body {
 h1, h3 { font-family: var(--serif); font-weight: 400; }
 button { font-family: var(--sans); cursor: pointer; }
 
-.appbar { padding: 20px 18px 8px; display: flex; align-items: baseline; gap: 10px; }
-.appbar h1 { font-size: 24px; }
-.appbar .sub { font-size: 12px; color: var(--muted); }
-/* Sits before the gear and takes the auto margin, so the gear stays hard
-   right and the pair reads as one group. */
-#recipes-link { margin-left: auto; border: 1px solid var(--hairline); color: var(--muted); border-radius: 6px; padding: 4px 10px; font-size: 14px; text-decoration: none; }
-#settings-btn { background: none; border: 1px solid var(--hairline); color: var(--muted); border-radius: 6px; padding: 4px 10px; font-size: 14px; }
+/* The header block is the swipe surface for changing lists, so it is a
+   grid rather than a baseline row: the title stacks, the count sits under
+   it, and the two buttons pin to the right across both rows. */
+.appbar { padding: 20px 18px 8px; display: grid; gap: 0 10px;
+          grid-template-columns: 1fr auto auto; align-items: start;
+          position: relative; touch-action: pan-y; user-select: none;
+          transition: background 140ms ease; }
+.appbar.armed { background: var(--fill); }
+.appbar h1 { font-size: 24px; line-height: 1.08; grid-column: 1; }
+.appbar .title-l2 { display: block; }
+.appbar h1 em { font-style: normal; font-size: 12px; color: var(--muted); font-weight: 400; }
+.appbar .sub { font-size: 12px; color: var(--muted); grid-column: 1; margin-top: 6px; }
+#list-dots { grid-column: 1 / -1; position: absolute; right: 18px; top: 22px;
+             display: flex; gap: 5px; }
+#list-dots i { width: 5px; height: 5px; border-radius: 50%; background: var(--hairline); }
+#list-dots i.on { background: var(--muted); }
+#recipes-link { grid-column: 2; grid-row: 1; border: 1px solid var(--hairline); color: var(--muted); border-radius: 6px; padding: 4px 10px; font-size: 14px; text-decoration: none; }
+#settings-btn { grid-column: 3; grid-row: 1; background: none; border: 1px solid var(--hairline); color: var(--muted); border-radius: 6px; padding: 4px 10px; font-size: 14px; }
 
 #add-form { padding: 8px 16px 4px; }
 #add-input {

@@ -21,8 +21,14 @@ if(d)document.documentElement.classList.add("dark")}catch(e){}})()</script>
 <div id="banner" hidden><span id="banner-text"></span><button id="banner-dismiss" aria-label="Dismiss">✕</button></div>
 
 <header class="appbar">
-  <h1>Shopping List</h1>
+  <!-- The title stacks deliberately: "- Hannaford" then sits both beside
+       "List" and beneath "Shopping", which is what the owner asked for, and
+       stacking is what makes a long name like "BJ's Wholesale Club" fit
+       without colliding with the Recipes button. On one line the row
+       measures ~476px against 390px of phone. -->
+  <h1 id="list-title">Shopping<span class="title-l2">List <em id="list-store"></em></span></h1>
   <span class="sub" id="list-sub"></span>
+  <span id="list-dots" aria-hidden="true"></span>
   <!-- Stays a plain https URL here so desktop, iOS and a JS failure all work.
        On Android app.js rewrites this to an intent:// URL, because target=_blank
        alone still lands in an in-app Custom Tab — see the note there. -->

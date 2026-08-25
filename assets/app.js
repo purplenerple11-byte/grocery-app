@@ -188,11 +188,18 @@ async function commitAll(items, meals, { replace = false } = {}) {
 
 function renderList() {
   const listEl = document.getElementById('list');
-  const onList = state.items.filter((it) => it.onList);
+  const onList = Store.itemsForList(state.items, state.currentList);
   const checkedCount = onList.filter((it) => it.checked).length;
+  document.getElementById('list-store').textContent =
+    state.currentList ? `- ${state.currentList}` : '';
   document.getElementById('list-sub').textContent =
     onList.length ? `${onList.length} item${onList.length === 1 ? '' : 's'} · ${checkedCount} checked` : '';
   document.getElementById('complete-trip').hidden = checkedCount === 0;
+
+  /* One dot says nothing. With a single list the store name alone carries it. */
+  document.getElementById('list-dots').innerHTML = state.roster.length > 1
+    ? state.roster.map((n) => `<i class="${n === state.currentList ? 'on' : ''}"></i>`).join('')
+    : '';
 
   listEl.innerHTML = Store.groupByCategory(onList).map(([cat, items]) => `
     <div class="cat">${escapeHtml(cat)}</div>
@@ -389,7 +396,7 @@ async function saveMeals(ids, tombstone = null) {
     if (!el) return;
     const item = state.items.find(it => it.id === el.dataset.id);
     if (item) {
-      commit(Store.update(item, { onList: true, checked: false, addedBy: currentCreatorName() }));
+      commit(Store.update(item, { onList: true, checked: false, addedBy: currentCreatorName(), listStore: state.currentList }));
       addInput.value = '';
       hideList();
     }
@@ -403,9 +410,9 @@ async function saveMeals(ids, tombstone = null) {
     // Exact-match → re-add existing item; else create new
     const existing = state.items.find(it => it.name.toLowerCase() === name.toLowerCase());
     if (existing) {
-      commit(Store.update(existing, { onList: true, checked: false, addedBy: currentCreatorName() }));
+      commit(Store.update(existing, { onList: true, checked: false, addedBy: currentCreatorName(), listStore: state.currentList }));
     } else {
-      commit(Store.createItem(name, { onList: true, addedBy: currentCreatorName() }));
+      commit(Store.createItem(name, { onList: true, addedBy: currentCreatorName(), listStore: state.currentList }));
     }
 
     addInput.value = '';
@@ -459,7 +466,7 @@ document.getElementById('complete-trip').addEventListener('click', async () => {
   document.getElementById('store-names').innerHTML =
     Store.storeNames(state.items).map((s) => `<option value="${escapeHtml(s)}">`).join('');
   const form = document.getElementById('trip-form');
-  form.elements.store.value = '';
+  form.elements.store.value = state.currentList;
   document.getElementById('trip-prices').innerHTML = bought.map((it) => `
     <div class="trip-row">
       <span class="trip-name">${escapeHtml(it.name)}</span>
@@ -482,7 +489,7 @@ document.getElementById('trip-form').addEventListener('submit', async (e) => {
     const value = Store.normalizePrice(raw);
     if (value !== null) prices[input.dataset.priceFor] = value;
   }
-  const restocked = Store.completeTrip(state.items, { store: e.target.elements.store.value, prices });
+  const restocked = Store.completeTrip(state.items, { store: e.target.elements.store.value, prices }, state.currentList);
   document.getElementById('trip-dialog').close();
   // completeTrip drops bought one-offs entirely; commitAll tombstones them.
   if (!await commitAll(restocked)) showBanner('Save failed — changes may not persist.');
@@ -678,7 +685,9 @@ document.getElementById('inv-grid').addEventListener('click', (e) => {
     editingTileId = tile.classList.contains('editing') ? item.id : null;
     return;
   }
-  if (action === 'toggle') commit(Store.toggleOnList(item));
+  if (action === 'toggle') commit(item.onList
+    ? Store.toggleOnList(item)
+    : Store.moveItemToList(item, state.currentList));
 });
 
 /* Which tile has its stepper open. render() rebuilds the grid wholesale, so
@@ -1216,7 +1225,7 @@ document.getElementById('preflight-form').addEventListener('submit', async (e) =
   document.getElementById('preflight-dialog').close();
   setDrawer(false);
   const withAdded = state.items.map(it =>
-    selectedIds.includes(it.id) ? Store.update(it, { onList: true, checked: false }) : it
+    selectedIds.includes(it.id) ? Store.update(it, { onList: true, checked: false, listStore: state.currentList }) : it
   );
   // Deliberately not awaited — the fly animation below must start this frame.
   commitAll(withAdded).then((ok) => { if (!ok) showBanner('Save failed — changes may not persist.'); });
