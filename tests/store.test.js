@@ -1621,3 +1621,50 @@ test('sanitizeItemFields keeps a non-empty listStore and ignores a blank one', (
   assertEqual('listStore' in Store.sanitizeItemFields({ listStore: '   ' }), false,
     'blank must not blank an existing list, same rule as unit and category');
 });
+
+test('completeTrip scoped to a list leaves other lists alone', () => {
+  const items = [
+    Store.createItem('Milk', { onList: true, checked: true, tracked: true, stock: 0,
+                               listQty: 2, listStore: 'Hannaford' }),
+    Store.createItem('Rice', { onList: true, checked: true, tracked: true, stock: 1,
+                               listQty: 5, listStore: "BJ's Club" })
+  ];
+  const next = Store.completeTrip(items, null, 'Hannaford');
+  const milk = next.find((i) => i.name === 'Milk');
+  const rice = next.find((i) => i.name === 'Rice');
+  assertEqual(milk.stock, 2, 'bought at Hannaford');
+  assertEqual(milk.onList, false);
+  assertEqual(rice.stock, 1, "BJ's stock untouched");
+  assertEqual(rice.onList, true, "BJ's item still on its list");
+  assertEqual(rice.checked, true, "BJ's item still checked");
+});
+
+test('completeTrip scoped to a list still drops that list untracked one-offs', () => {
+  const items = [
+    Store.createItem('Napkins', { onList: true, checked: true, tracked: false, listStore: 'Hannaford' }),
+    Store.createItem('Foil', { onList: true, checked: true, tracked: false, listStore: "BJ's Club" })
+  ];
+  const next = Store.completeTrip(items, null, 'Hannaford');
+  assertEqual(next.length, 1);
+  assertEqual(next[0].name, 'Foil', 'the other list keeps its one-off');
+});
+
+test('completeTrip with no list name is unchanged', () => {
+  const items = [
+    Store.createItem('Milk', { onList: true, checked: true, tracked: true, stock: 0,
+                               listQty: 1, listStore: 'Hannaford' }),
+    Store.createItem('Rice', { onList: true, checked: true, tracked: true, stock: 0,
+                               listQty: 1, listStore: "BJ's Club" })
+  ];
+  const next = Store.completeTrip(items);
+  assertEqual(next.find((i) => i.name === 'Milk').stock, 1);
+  assertEqual(next.find((i) => i.name === 'Rice').stock, 1);
+});
+
+test('completeTrip records the price against the list being completed', () => {
+  const items = [Store.createItem('Milk', { id: 'm1', onList: true, checked: true,
+                                            tracked: true, listStore: 'Hannaford' })];
+  const next = Store.completeTrip(items, { store: 'Hannaford', prices: { m1: 3.49 } }, 'Hannaford');
+  assertEqual(next[0].prices[0].price, 3.49);
+  assertEqual(next[0].prices[0].store, 'Hannaford');
+});

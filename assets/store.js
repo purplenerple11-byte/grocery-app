@@ -210,11 +210,17 @@ const Store = {
   },
 
   /* purchase (optional): { store, prices: { [itemId]: number } }. A price is
-     recorded only for bought items that have one; blank entries are skipped. */
-  completeTrip(items, purchase = null) {
+     recorded only for bought items that have one; blank entries are skipped.
+
+     listName (optional): when set, only that list's checked items are bought.
+     You are standing in one store; checking off at another is a different
+     trip. Omitted, every checked item is bought — the pre-lists behaviour,
+     which keeps old call sites and old tests honest. */
+  completeTrip(items, purchase = null, listName = '') {
     const kept = [];
     for (const it of items) {
-      if (!(it.onList && it.checked)) { kept.push(it); continue; }
+      const inScope = !listName || it.listStore === listName;
+      if (!(it.onList && it.checked && inScope)) { kept.push(it); continue; }
       if (!it.tracked) continue; // bought one-off: gone
       let next = Store.update(it, {
         stock: it.stock + it.listQty,
