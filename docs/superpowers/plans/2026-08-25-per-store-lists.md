@@ -14,7 +14,7 @@
 - **`assets/store.js` stays pure** — no DOM access. UI concerns go in `app.js`.
 - **Categories are open-ended.** Never coerce an unrecognized category to `Other`. The same rule now applies to `listStore`: an unknown store name from an import is preserved verbatim.
 - **New `Store` functions get tests** in `tests/store.test.js`.
-- **Bump `const CACHE` in `sw.js`** (`grocery-v48` → `grocery-v49`) before merging. Currently at line 1.
+- **Bump `const CACHE` in `sw.js`** (`grocery-v51` → `grocery-v52`) before merging. Currently at line 1.
 - **Merge finished work straight into `main`.** No pull request unless asked. `main` is production — Cloudflare Pages publishes every push within ~1 minute.
 - **Tests must pass before merging.** Open `tests/run-tests.html`; the page title shows ✓/✗.
 - **One browser tab only** when running tests — a second tab holds IndexedDB open and the DB tests hang forever.
@@ -49,7 +49,7 @@ No new files. This codebase deliberately keeps everything in four assets; adding
 ### Task 1: `listStore` on the item, and the pure list functions
 
 **Files:**
-- Modify: `assets/store.js:66-85` (`createItem`), `assets/store.js:408-427` (`sanitizeItemFields`)
+- Modify: `assets/store.js:66-85` (`createItem`), `assets/store.js:431-450` (`sanitizeItemFields`)
 - Test: `tests/store.test.js`
 
 **Interfaces:**
@@ -232,7 +232,7 @@ In `assets/store.js`, insert after `categoryChoices` (which ends at line 59):
 
 - [ ] **Step 5: Accept `listStore` in `sanitizeItemFields`**
 
-In `assets/store.js`, in `sanitizeItemFields` (line 408), add after the `unit` line:
+In `assets/store.js`, in `sanitizeItemFields` (line 431), add after the `unit` line:
 
 ```js
     // Same rule as category and unit: blank means "unspecified", so a merge
@@ -361,7 +361,7 @@ git commit -m "Finish a trip at one store without buying the other store's list"
 ### Task 3: Put `list_store` on the sync wire — and on the live table
 
 **Files:**
-- Modify: `assets/store.js:662-683` (`toItemRow`, `fromItemRow`), `supabase/schema.sql:45-`
+- Modify: `assets/store.js:685-708` (`toItemRow`, `fromItemRow`), `supabase/schema.sql:45`
 - Test: `tests/store.test.js`
 - **External: the live Supabase project.**
 
@@ -428,14 +428,14 @@ Reload `tests/run-tests.html`. Expected: ✗, `row.list_store` is `undefined`.
 
 - [ ] **Step 4: Add the field to both mappers**
 
-In `assets/store.js`, in `toItemRow` (line 662), add after the `on_list` line:
+In `assets/store.js`, in `toItemRow` (line 685), add after the `on_list` line:
 
 ```js
       on_list: !!item.onList, list_qty: item.listQty, checked: !!item.checked,
       list_store: item.listStore || '',
 ```
 
-In `fromItemRow` (line 674), add after the `onList` line:
+In `fromItemRow` (line 697), add after the `onList` line:
 
 ```js
       onList: row.on_list, listQty: row.list_qty, checked: row.checked,
@@ -474,7 +474,7 @@ git commit -m "Carry the list name over sync, with the column it needs"
 ### Task 4: Current list, roster persistence, and migration
 
 **Files:**
-- Modify: `assets/app.js:2` (`state`), `assets/app.js:1733` (`boot`)
+- Modify: `assets/app.js:2` (`state`), `assets/app.js:1819` (`boot`)
 - Test: manual, in the browser console (this is DB/state wiring, not pure logic)
 
 **Interfaces:**
@@ -488,10 +488,16 @@ git commit -m "Carry the list name over sync, with the column it needs"
 
 - [ ] **Step 1: Extend the state object**
 
-In `assets/app.js`, replace line 2:
+In `assets/app.js`, replace line 2. **Keep every existing field** — `notesLastSeen` belongs to the What's-new page added in `8588929`, and dropping it breaks that feature silently:
 
 ```js
-const state = { items: [], meals: [], displayName: '', roster: [], currentList: '' };
+const state = { items: [], meals: [], displayName: '', notesLastSeen: null, roster: [], currentList: '' };
+```
+
+Before editing, confirm what is actually there — another session may have added more since this plan was written:
+
+```bash
+sed -n '2p' assets/app.js
 ```
 
 - [ ] **Step 2: Add the roster helpers**
@@ -521,7 +527,7 @@ async function setCurrentList(name) {
 
 - [ ] **Step 3: Add the migration and the boot load**
 
-In `assets/app.js`, inside `boot()` (line 1733), after `state.items` and `state.meals` are loaded from the DB and before the first `render()`, insert:
+In `assets/app.js`, inside `boot()` (line 1819), after `state.items` and `state.meals` are loaded from the DB and before the first `render()`, insert:
 
 ```js
   /* One-time migration. The owner's existing list IS the Hannaford list —
@@ -606,7 +612,7 @@ git commit -m "Remember which list you are on, and make the old one Hannaford"
 ### Task 5: The stacked header and list-scoped rendering
 
 **Files:**
-- Modify: `index.html:21-28` (the `.appbar` block), `assets/style.css:84-90`, `assets/app.js:170-201` (`renderList`)
+- Modify: `index.html:23-31` (the `.appbar` block), `assets/style.css:84-90`, `assets/app.js:170-201` (`renderList`)
 - Test: browser
 
 **Interfaces:**
@@ -615,7 +621,7 @@ git commit -m "Remember which list you are on, and make the old one Hannaford"
 
 - [ ] **Step 1: Replace the header markup**
 
-In `index.html`, replace lines 21-22 (the `<h1>` and the `.sub` span) with:
+In `index.html`, replace lines 24-25 (the `<h1>` and the `.sub` span) with:
 
 ```html
   <!-- The title stacks deliberately: "- Hannaford" then sits both beside
@@ -743,7 +749,7 @@ git commit -m "Name the list in the header and show only that list"
 ### Task 6: The swipe gesture on the header block
 
 **Files:**
-- Modify: `assets/app.js` (append a new IIFE near the row-swipe block at line 654)
+- Modify: `assets/app.js` (append a new IIFE near the row-swipe block at line 683)
 - Test: browser, by dispatching events
 
 **Interfaces:**
@@ -1272,7 +1278,7 @@ In `index.html`, in `#item-form`, after the Category picker block:
     </div>
 ```
 
-In `assets/app.js`, in `openItemDialog(item)` (line 1017), populate it from `state.roster` following the exact pattern `renderCategoryList` uses (line 956) — radios named `list`, current value always included. In the item-form submit handler, read `form.elements.list.value` and pass it as `listStore`.
+In `assets/app.js`, in `openItemDialog(item)` (line 1046), populate it from `state.roster` following the exact pattern `renderCategoryList` uses (line 985) — radios named `list`, current value always included. In the item-form submit handler, read `form.elements.list.value` and pass it as `listStore`.
 
 - [ ] **Step 9: Verify the whole management flow in the browser**
 
@@ -1325,7 +1331,7 @@ git commit -m "Make, rename, reorder and delete lists"
 In `sw.js`, line 1:
 
 ```js
-const CACHE = 'grocery-v49';
+const CACHE = 'grocery-v52';
 ```
 
 Without this an already-installed PWA keeps serving the old files and the entire feature is invisible on the phone even though the deploy succeeded.
