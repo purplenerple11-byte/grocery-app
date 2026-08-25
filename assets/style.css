@@ -94,8 +94,8 @@ button { font-family: var(--sans); cursor: pointer; }
 .appbar h1 em { font-style: normal; font-size: 12px; color: var(--muted); font-weight: 400; cursor: pointer; padding: 2px 4px; margin: -2px -4px; border-radius: 4px; }
 .appbar h1 em:active { background: var(--fill); }
 .appbar .sub { font-size: 12px; color: var(--muted); grid-column: 1; margin-top: 6px; }
-#list-dots { grid-column: 1 / -1; position: absolute; right: 18px; top: 22px;
-             display: flex; gap: 5px; }
+#list-dots { grid-column: 2 / -1; justify-self: end; align-self: center;
+             display: flex; gap: 5px; margin-top: 6px; }
 #list-dots i { width: 5px; height: 5px; border-radius: 50%; background: var(--hairline); }
 #list-dots i.on { background: var(--muted); }
 #recipes-link { grid-column: 2; grid-row: 1; border: 1px solid var(--hairline); color: var(--muted); border-radius: 6px; padding: 4px 10px; font-size: 14px; text-decoration: none; }
@@ -621,3 +621,35 @@ dialog menu button, .import-label {
                    color: var(--ink); border-radius: 6px; padding: 2px 8px; font-size: 13px; }
 .list-row button[disabled] { opacity: .35; }
 
+
+/* ── The "new list" card ──────────────────────────────────────────────────
+   The lane past the last list. It is rendered into #list rather than shown
+   as a dialog so the inhale animation carries it in like any other list —
+   a modal would break the illusion that you swiped somewhere. */
+.new-list-card {
+  background: var(--surface); border: 1px solid var(--hairline);
+  border-radius: 14px; padding: 28px 20px 20px; margin: 8px 0;
+  text-align: center;
+}
+.new-list-plus { font-size: 34px; color: var(--muted); line-height: 1; }
+.new-list-card h2 { font-size: 20px; margin: 10px 0 4px; }
+.new-list-card p { font-size: 13px; color: var(--muted); margin: 0 0 16px; }
+.new-list-card input {
+  width: 100%; background: var(--fill); border: 1px solid var(--field-line);
+  border-radius: 6px; padding: 11px 14px; color: var(--ink);
+  font-size: 16px; /* iOS zooms below 16px */ text-align: center;
+}
+.new-list-card input::placeholder { color: var(--muted); }
+.new-list-actions { display: flex; gap: 8px; margin-top: 14px; }
+.new-list-actions button { flex: 1; border-radius: 6px; padding: 10px; font-size: 15px; }
+#new-list-cancel { border: 1px solid var(--hairline); background: var(--fill); color: var(--ink); }
+/* .btn-clay is shaped for a dialog footer (square top corners, !important
+   radius). On a card it needs its own rounding, and the generic rule above
+   would otherwise out-specify its background and make Create look disabled. */
+#new-list-create { background: var(--clay); color: var(--canvas);
+                   border: none; font-weight: 600; border-radius: 6px !important; }
+
+/* The create lane's dot is hollow, so the row of dots reads as
+   "three lists and somewhere to make a fourth". */
+#list-dots i.add { background: none; box-shadow: inset 0 0 0 1px var(--hairline); }
+#list-dots i.add.on { background: none; box-shadow: inset 0 0 0 1.5px var(--muted); }

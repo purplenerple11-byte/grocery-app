@@ -1708,3 +1708,8 @@ test('canAddList rejects blanks and duplicates, case-insensitively', () => {
   assertEqual(Store.canAddList(r, 'x'.repeat(60)).ok, true);
 });
 
+
+test('canAddList names the clash the way the existing list spells it', () => {
+  const r = ['Hannaford'];
+  assertEqual(Store.canAddList(r, 'hannaford').reason, 'You already have a Hannaford list.');
+});

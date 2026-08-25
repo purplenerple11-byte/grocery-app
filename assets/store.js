@@ -125,9 +125,10 @@ const Store = {
     if (!trimmed) return { ok: false, reason: 'Give the list a name.' };
     if (trimmed.length > 60) return { ok: false, reason: 'That name is too long.' };
     const lower = trimmed.toLowerCase();
-    if ((roster || []).some((n) => n.trim().toLowerCase() === lower)) {
-      return { ok: false, reason: `You already have a ${trimmed} list.` };
-    }
+    // Name the list the way it is actually spelled, not the way it was typed:
+    // "you already have a hannaford list" reads like a different list.
+    const clash = (roster || []).find((n) => n.trim().toLowerCase() === lower);
+    if (clash) return { ok: false, reason: `You already have a ${clash} list.` };
     return { ok: true, reason: '' };
   },
 
