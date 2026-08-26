@@ -190,7 +190,7 @@ supabase/schema.sql        tables, RLS policies, RPCs — paste into the SQL edi
                            nothing until someone runs it. See "schema drift".
 tests/store.test.js        125 tests, all passing (incl. sync reconciliation)
 PRODUCT.md                 durable product truth (users, mechanism, constraints)
-docs/DESIGN.md             the implemented dark system (source of truth for look)
+STYLE_GUIDE.md             the house visual system (source of truth for look)
 docs/superpowers/specs/    the design spec — read this first
 docs/superpowers/plans/    v1 implementation plan (historical)
 .superpowers/sdd/          v1 build ledger + per-task reports (historical)
@@ -330,12 +330,46 @@ python3 -m http.server 8000        # from repo root; service worker needs http
    list: ⚙ → "Copy sync report" dumps both from any device, no console needed.
 
 
+12. **Settings do not sync. Only items and meals do.** `DB.putSetting` writes
+   to IndexedDB and stops there — there is no settings reconciler. Anything
+   parked in a setting is device-local forever. The per-store-lists spec
+   claimed the roster synced "as a household setting"; nothing implemented
+   that, and it was not caught because the roster's OTHER source — names
+   derived from the items themselves — masked it for every non-empty list.
+
+   Before you put shared state in a setting, check that it can actually get
+   there. `lists.roster` and `lists.current` are the current occupants.
+
+
+13. **A device on a stale service worker is an active data source, not just a
+   stale view.** The SW is cache-first, so a phone that has not been reopened
+   in weeks keeps running the old bundle and keeps WRITING with it — adding
+   items that lack every field the old build never heard of. Those rows sync
+   up perfectly and then break the new build's assumptions.
+
+   Concretely: a pre-lists device adds items with `list_store = ''`, and
+   `itemsForList` matches on equality, so they belonged to no list — invisible
+   on every device, counted by nothing, skipped by trip completion. They had
+   synced fine; there was no lane to draw them in.
+
+   **When you add a required field to an item, write the repair at the same
+   time as the field.** `Store.adoptOrphans` is that repair. A migration that
+   only runs at boot on YOUR device does not cover records that arrive later
+   from someone else's.
+
+
 ## Status
 
-**V7 — per-store lists (built 2026-08-25).** One list per store; `item.listStore`
-holds the name. A list is a name, not a record — the roster of names lives in
-the `lists.roster` setting, which exists so an EMPTY list survives; non-empty
-lists are derivable from the items. Deliberately NOT a `lists` table: that
+**V7 — per-store lists (built 2026-08-25, repaired 2026-08-26).** One list per
+store; `item.listStore` holds the name. A list is a name, not a record — the
+roster of names lives in the `lists.roster` setting, which exists so an EMPTY
+list survives; non-empty lists are derivable from the items.
+
+⚠ **`lists.roster` is a setting, and settings do not sync (gotcha #12).** So an
+empty list is device-local. A list with items in it travels on those items and
+appears on the other device automatically — `applySnapshot` recomputes the
+roster on every pull, so it shows up without an app restart. If empty lists ever
+need to travel, that means building settings sync; it does not exist today. Deliberately NOT a `lists` table: that
 would have meant new RLS policies, a third reconciler path and tombstones for
 lists, roughly doubling the feature for referential integrity over a handful of
 strings.
@@ -537,15 +571,13 @@ the implementer where an item collides with existing code.
 - **Delegate verification to an independent subagent.** This caught a real
   ship-blocking bug in V2 (native form validation silently killed the
   "Finish trip" button) that the author had missed.
-- Design decisions live in `docs/DESIGN.md` and the spec. **As of 2026-07-29
-  that file documents the app's own dark system**, not the light Anthropic
-  "parchment" reference it was inverted from — the reference is still in git
-  history if you need it (`git log -- docs/DESIGN.md`). Read the named rules
-  before touching UI; the load-bearing ones are **Clay-Is-Action** (clay only
-  ever marks checked/on-list/submit/armed), **Serif-Names-It** (serif for
-  strings the user typed, sans for numbers the app produced),
-  **Flat-Unless-Detached** (shadows only on things that left the layout), and
-  status colors staying sage/ochre/clay — never green/yellow/red.
+- Design decisions live in `STYLE_GUIDE.md` (the Recipe Holder house style) and
+  the spec. **`docs/DESIGN.md` was deleted 2026-08-26** — it documented the old
+  dark-only system and had gone stale on every axis that matters: the app is now
+  light-by-default with `.dark` inverting, `--clay` is near-black rather than
+  terracotta, and stock status is deliberately green/gold/red, which the old doc
+  forbade. It is recoverable via `git log -- docs/DESIGN.md` if you want the
+  history, but do not treat it as current. One visual authority, not two.
 - Product truth lives in `PRODUCT.md` (added 2026-07-29): who uses it, the
   trip-loop mechanism, the no-build/no-npm constraints, and which constraints
   are permanent vs. merely current. Notably, **single-device is today's
