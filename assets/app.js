@@ -1930,7 +1930,18 @@ function applySnapshot(snap) {
   pendingSnapshot = null;
   state.items = snap.items;
   state.meals = snap.meals;
+  /* A list name travels between devices only on the items that carry it, so a
+     pull can introduce a list this device has never heard of. The roster was
+     otherwise built once at boot, which meant a partner's new list stayed
+     invisible here until the app was restarted. */
+  state.roster = Store.listRoster(state.items, state.roster);
   render();
+  /* Anything that arrived on a list but without a list name would render
+     nowhere at all. Rehome it and push the repair. adoptOrphans returns the
+     same array when there is nothing to do, so the common pull writes nothing
+     and this cannot become a pull/push loop. */
+  const adopted = Store.adoptOrphans(state.items, state.roster[0]);
+  if (adopted !== state.items) commitAll(adopted, null);
 }
 function drainSnapshot() {
   if (pendingSnapshot) applySnapshot(pendingSnapshot);
@@ -2257,6 +2268,11 @@ async function boot() {
   }
   state.roster = Store.listRoster(state.items, roster);
   if (!state.roster.length) state.roster = ['Hannaford'];
+
+  // Same repair at boot, before the first render, so an orphan is never shown
+  // as missing even briefly.
+  const adoptedAtBoot = Store.adoptOrphans(state.items, state.roster[0]);
+  if (adoptedAtBoot !== state.items) await commitAll(adoptedAtBoot, null);
 
   /* A list deleted on another device can leave a dangling current. */
   const saved = await DB.getSetting(CURRENT_KEY, '');

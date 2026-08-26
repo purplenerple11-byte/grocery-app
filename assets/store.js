@@ -85,6 +85,28 @@ const Store = {
     return (items || []).filter((it) => it.onList && it.listStore === name);
   },
 
+  /* An on-list item with no list name belongs to no list, so it renders
+     nowhere, counts toward nothing, and is skipped by trip completion — it is
+     simply gone from the user's point of view even though it synced fine.
+     They arrive from any device still running a pre-lists build (the service
+     worker is cache-first, so "still running" can mean weeks) and from
+     imports, which have no listStore to give.
+
+     Adoption puts them on the default list rather than dropping them. It bumps
+     updatedAt so the repair pushes to the household instead of being redone on
+     every device forever.
+
+     Returns the SAME array when nothing needs adopting. Callers rely on that
+     identity to skip the write — without it, every pull would rewrite every
+     item and re-queue the whole table in the outbox. */
+  adoptOrphans(items, listName) {
+    if (!listName) return items;
+    const list = items || [];
+    if (!list.some((it) => it && it.onList && !it.listStore)) return list;
+    return list.map((it) =>
+      it && it.onList && !it.listStore ? Store.update(it, { listStore: listName }) : it);
+  },
+
   /* Returns the neighbour, or null at either end — the caller turns a null
      at the far end into the "+ New list" card. Deliberately does not wrap. */
   nextList(roster, current, dir) {

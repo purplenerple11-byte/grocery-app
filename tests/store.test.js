@@ -1713,3 +1713,28 @@ test('canAddList names the clash the way the existing list spells it', () => {
   const r = ['Hannaford'];
   assertEqual(Store.canAddList(r, 'hannaford').reason, 'You already have a Hannaford list.');
 });
+
+
+/* An item can reach this device on a list but with no list name: an older
+   build of the app (cache-first service worker, not yet updated) has no
+   concept of listStore, so everything it adds arrives with ''. Before
+   adoptOrphans existed those items rendered on no list at all — synced,
+   counted by nothing, invisible. That is how a partner's additions vanished. */
+test('adoptOrphans rehomes on-list items that carry no list name', () => {
+  const items = [
+    { id: 'a', onList: true, listStore: '' },
+    { id: 'b', onList: true, listStore: "BJ's Club" },
+    { id: 'c', onList: false, listStore: '' },
+  ];
+  const out = Store.adoptOrphans(items, 'Hannaford');
+  assertEqual(out.find((i) => i.id === 'a').listStore, 'Hannaford', 'orphan adopted');
+  assertEqual(out.find((i) => i.id === 'b').listStore, "BJ's Club", 'other lists untouched');
+  assertEqual(out.find((i) => i.id === 'c').listStore, '', 'off-list items are not on a list at all');
+});
+
+test('adoptOrphans returns the same array when there is nothing to adopt', () => {
+  const items = [{ id: 'a', onList: true, listStore: 'Hannaford' }];
+  assert(Store.adoptOrphans(items, 'Hannaford') === items,
+    'identity, so callers can skip the write and avoid an outbox churn loop');
+  assert(Store.adoptOrphans(items, '') === items, 'no roster yet: adopt nothing, never stamp ""');
+});
