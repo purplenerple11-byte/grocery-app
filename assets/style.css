@@ -84,15 +84,20 @@ button { font-family: var(--sans); cursor: pointer; }
 /* The header block is the swipe surface for changing lists, so it is a
    grid rather than a baseline row: the title stacks, the count sits under
    it, and the two buttons pin to the right across both rows. */
-.appbar { padding: 20px 18px 8px; display: grid; gap: 0 10px;
+.appbar { padding: 24px 18px 18px; display: grid; gap: 0 10px;
           grid-template-columns: 1fr auto auto; align-items: start;
           position: relative; touch-action: pan-y; user-select: none;
           transition: background 140ms ease; }
 .appbar.armed { background: var(--fill); }
 .appbar h1 { font-size: 24px; line-height: 1.08; grid-column: 1; }
 .appbar .title-l2 { display: block; }
-.appbar h1 em { font-style: normal; font-size: 12px; color: var(--muted); font-weight: 400; cursor: pointer; padding: 2px 4px; margin: -2px -4px; border-radius: 4px; }
+.appbar h1 em { font-style: normal; font-size: 12px; color: var(--muted); font-weight: 400; cursor: pointer; padding: 2px 4px; margin: -2px -4px; border-radius: 4px; position: relative; }
 .appbar h1 em:active { background: var(--fill); }
+/* Rename is a 12px word, which is a ~16px tap target — half the 44px minimum,
+   and it sits on the same block as the list-changing swipe, so a near miss
+   does something else entirely. Grow the target without moving the text: a
+   positioned pseudo-element takes the extra hits and costs no layout. */
+.appbar h1 em::after { content: ''; position: absolute; inset: -14px -10px; }
 .appbar .sub { font-size: 12px; color: var(--muted); grid-column: 1; margin-top: 6px; }
 #list-dots { grid-column: 2 / -1; justify-self: end; align-self: center;
              display: flex; gap: 5px; margin-top: 6px; }
