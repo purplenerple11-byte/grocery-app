@@ -377,6 +377,12 @@ strings.
 The swipe lives on the header block, not the list body, because a horizontal
 swipe on a row already means delete. Do not move it onto the rows.
 
+Because the block is a gesture surface, everything tappable ON it competes with
+the swipe — a near miss on the store name changes lists instead of renaming. The
+name's hit area is grown with an `::after` inset rather than padding, so the
+target is 47px tall while the text stays 12px and the grid does not move. Keep
+that pattern for anything else added to the block.
+
 `completeTrip` takes an optional third argument, the list name. Omitted, it
 behaves exactly as before — that is what keeps the pre-lists tests honest.
 
