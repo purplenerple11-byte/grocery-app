@@ -1738,3 +1738,39 @@ test('adoptOrphans returns the same array when there is nothing to adopt', () =>
     'identity, so callers can skip the write and avoid an outbox churn loop');
   assert(Store.adoptOrphans(items, '') === items, 'no roster yet: adopt nothing, never stamp ""');
 });
+
+
+/* The "by Roo" badge used to time itself from a localStorage map of item ids
+   that was written once and never cleared, so the 30s window ran from the
+   first time this device ever rendered that item with an addedBy — not from
+   the add. Re-adding a staple you had added before was therefore silent
+   forever, which read as the badge working at random. Time it from the item's
+   own updatedAt instead: no per-device state, and it works the same for an
+   item that arrived from someone else. */
+const attrItem = (over) => ({ name: 'Yogurt', addedBy: 'Roo', onList: true, checked: false, updatedAt: 1000, ...over });
+
+test('attributionState shows the badge for a fresh add, however old the item is', () => {
+  const st = Store.attributionState(attrItem({ updatedAt: 1000 }), 1000);
+  assertEqual(st && st.name, 'Roo');
+  assertEqual(st.isFading, false);
+});
+
+test('attributionState re-shows on a re-add, which the seen-map never did', () => {
+  // Same item, added weeks ago and added again just now.
+  const readded = attrItem({ updatedAt: 500000 });
+  assert(Store.attributionState(readded, 500000) !== null, 'a second add must announce itself too');
+});
+
+test('attributionState fades, then stops', () => {
+  assertEqual(Store.attributionState(attrItem(), 1000 + 29000).isFading, true);
+  assertEqual(Store.attributionState(attrItem(), 1000 + 31999).isFading, true);
+  assertEqual(Store.attributionState(attrItem(), 1000 + 32000), null);
+});
+
+test('attributionState stays quiet when there is nothing to announce', () => {
+  assertEqual(Store.attributionState(attrItem({ addedBy: '' }), 1000), null, 'no name');
+  assertEqual(Store.attributionState(attrItem({ onList: false }), 1000), null, 'not on the list');
+  assertEqual(Store.attributionState(attrItem({ checked: true }), 1000), null,
+    'checking an item bumps updatedAt; that is not an add');
+  assertEqual(Store.attributionState(attrItem({ updatedAt: 0 }), 1000), null, 'never stamped');
+});

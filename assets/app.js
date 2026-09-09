@@ -43,43 +43,18 @@ function currentCreatorName() {
   return '';
 }
 
-function getAttributionSeenMap() {
-  try { return JSON.parse(localStorage.getItem('grocery_attr_seen') || '{}'); }
-  catch (e) { return {}; }
-}
-function setAttributionSeenMap(map) {
-  try { localStorage.setItem('grocery_attr_seen', JSON.stringify(map)); }
-  catch (e) {}
-}
-
-function getAttributionState(item) {
-  if (!item.addedBy) return null;
-  const map = getAttributionSeenMap();
-  const now = Date.now();
-  if (!map[item.id]) {
-    map[item.id] = now;
-    setAttributionSeenMap(map);
-  }
-  const age = now - map[item.id];
-  if (age >= 32000) return null;
-  return {
-    name: item.addedBy,
-    isFading: age >= 29000
-  };
-}
+// Whether a row shows "by <name>" is Store.attributionState — pure, tested.
 
 const attrTimers = new Map();
 function scheduleAttributionFadeouts() {
   attrTimers.forEach((t) => clearTimeout(t));
   attrTimers.clear();
-  const map = getAttributionSeenMap();
   const now = Date.now();
   document.querySelectorAll('#list .added-by').forEach((el) => {
     const id = el.dataset.attrId;
     if (!id) return;
-    const seenAt = map[id] || now;
-    const age = now - seenAt;
-    const remFade = Math.max(0, 30000 - age);
+    // Same clock the badge is decided on, so the fade cannot drift from it.
+    const remFade = Math.max(0, 30000 - (now - Number(el.dataset.attrAt || now)));
     const t = setTimeout(() => {
       el.classList.add('faded');
       setTimeout(() => { el.style.display = 'none'; }, 1500);
@@ -246,8 +221,8 @@ function renderList() {
         <button class="check" data-action="check" aria-label="Check off">✓</button>
         <span class="name">
           ${escapeHtml(it.name)}${(() => {
-            const attr = getAttributionState(it);
-            return attr ? ` <em class="added-by${attr.isFading ? ' faded' : ''}" data-attr-id="${it.id}">by ${escapeHtml(attr.name)}</em>` : '';
+            const attr = Store.attributionState(it);
+            return attr ? ` <em class="added-by${attr.isFading ? ' faded' : ''}" data-attr-id="${it.id}" data-attr-at="${it.updatedAt}">by ${escapeHtml(attr.name)}</em>` : '';
           })()}
         </span>
         ${Store.hasEnough(it) ? `<span class="have-note">have ${it.stock}</span>` : ''}

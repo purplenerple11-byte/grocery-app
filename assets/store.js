@@ -85,6 +85,30 @@ const Store = {
     return (items || []).filter((it) => it.onList && it.listStore === name);
   },
 
+  /* "by Roo" on a row someone has just put on the list, for 30s.
+
+     Timed from the item's own updatedAt, not from per-device bookkeeping. The
+     previous version kept a localStorage map of item ids, stamped the first
+     time this device rendered an item that had a name on it, and never cleared
+     it — so the window ran from first sight rather than from the add. Adding a
+     staple you had added before was silent forever, which read as the badge
+     firing at random. It also meant a fresh install announced the whole list
+     at once.
+
+     updatedAt is bumped by any change, not just an add, so `checked` is
+     excluded: checking something off is the common non-add write and does not
+     deserve a badge. A qty change on an unchecked row still re-announces —
+     accepted, it is rare and the badge is transient.
+
+     Age is clamped at 0 because nextStamp can legitimately mint a timestamp
+     slightly in the future to break a tie. */
+  attributionState(item, now = Date.now()) {
+    if (!item || !item.addedBy || !item.onList || item.checked || !item.updatedAt) return null;
+    const age = Math.max(0, now - item.updatedAt);
+    if (age >= 32000) return null;
+    return { name: item.addedBy, isFading: age >= 29000 };
+  },
+
   /* An on-list item with no list name belongs to no list, so it renders
      nowhere, counts toward nothing, and is skipped by trip completion — it is
      simply gone from the user's point of view even though it synced fine.
