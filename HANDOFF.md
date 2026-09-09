@@ -358,6 +358,19 @@ python3 -m http.server 8000        # from repo root; service worker needs http
    from someone else's.
 
 
+14. **"Works sometimes" usually means state you forgot you were keeping.** The
+   `by <name>` badge fired on some adds and not others. It was not the write
+   path — every item had `added_by` set correctly. The badge timed its 30s
+   window from a localStorage map of item ids that was stamped on first sight
+   and never cleared, so an item you had added before was silent forever.
+   Staples are exactly what you re-add, so it looked random.
+
+   Attribution is now `Store.attributionState`, timed from `item.updatedAt`.
+   Prefer a timestamp already on the record over a per-device map: the map
+   cannot survive a reinstall, cannot agree between two devices, and grows
+   without bound.
+
+
 ## Status
 
 **V7 — per-store lists (built 2026-08-25, repaired 2026-08-26).** One list per
