@@ -1,7 +1,7 @@
-const CACHE = 'grocery-v58';
+const CACHE = 'grocery-v59';
 const ASSETS = [
   './', './index.html', './manifest.json',
-  './assets/style.css', './assets/store.js', './assets/app.js',
+  './assets/style.css', './assets/version.js', './assets/store.js', './assets/app.js',
   // Self-hosted so the serif survives offline. A missing font here would not
   // fail loudly — it would silently fall back to Georgia on the device only.
   './assets/fraunces-latin.woff2',

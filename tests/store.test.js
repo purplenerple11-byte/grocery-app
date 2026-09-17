@@ -1544,6 +1544,39 @@ test('createItem defaults listStore to empty', () => {
   assertEqual(Store.createItem('Milk', { listStore: 'Hannaford' }).listStore, 'Hannaford');
 });
 
+test('firstBootDefaults seeds a fresh install with a generic list name', () => {
+  const d = Store.firstBootDefaults([]);
+  assertEqual(d.fresh, true);
+  assertEqual(d.roster, [Store.DEFAULT_LIST]);
+  // The whole point: a stranger must not be handed someone else's supermarket.
+  assert(d.roster[0] !== Store.MIGRATED_LIST, 'fresh install is not seeded with the owner store');
+});
+
+test('firstBootDefaults keeps the owner list when the install has history', () => {
+  // Off-list items count. A device mid-migration may have nothing on the list
+  // today and still be years deep in inventory, and renaming that to Groceries
+  // would be exactly the data loss this is meant to avoid.
+  const d = Store.firstBootDefaults([Store.createItem('Milk', { onList: false })]);
+  assertEqual(d.fresh, false);
+  assertEqual(d.roster, [Store.MIGRATED_LIST]);
+});
+
+test('firstBootDefaults hides the Recipes link and shows the card only when fresh', () => {
+  const fresh = Store.firstBootDefaults([]);
+  assertEqual(fresh.recipesLink, false, 'a stranger gets no unexplained header link');
+  assertEqual(fresh.firstRunSeen, false, 'a stranger has not seen the card');
+
+  const owner = Store.firstBootDefaults([Store.createItem('Milk')]);
+  assertEqual(owner.recipesLink, true, 'the owner keeps the link');
+  assertEqual(owner.firstRunSeen, true, 'and is never shown the card, even after emptying the list');
+});
+
+test('the About version matches the newest patch note', () => {
+  // These drifted eight releases apart once. tools/check-version.sh covers
+  // sw.js too, which this page cannot read over file://.
+  assertEqual(PATCH_NOTES[0].version, APP_VERSION);
+});
+
 test('listRoster unions stored roster with names actually in use', () => {
   const items = [
     Store.createItem('Milk', { onList: true, listStore: 'Hannaford' }),
