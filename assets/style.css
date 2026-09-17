@@ -451,6 +451,10 @@ dialog h3 { font-size: 20px; margin-bottom: 12px; }
   color: var(--muted); font-size: 15px; line-height: 1; padding: 0;
 }
 dialog label, dialog .field { display: block; font-size: 12px; color: var(--muted); margin-bottom: 10px; }
+/* An author `display` beats the UA's [hidden] rule no matter the specificity,
+   so without this the shared ask() dialog painted an empty text box above the
+   buttons every time it was used as a confirm. */
+dialog label[hidden], dialog .field[hidden] { display: none; }
 dialog .field { position: relative; z-index: 1; }
 dialog input:not([type="checkbox"]), dialog select {
   width: 100%; margin-top: 4px; background: var(--surface); border: 1px solid var(--field-line);

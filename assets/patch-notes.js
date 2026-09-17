@@ -12,6 +12,13 @@
 const PATCH_NOTES = [
   {
     date: '2026-09-17',
+    version: 63,
+    notes: [
+      'Renaming a list, adding a category, deleting a list and restoring a backup used to pop the browser\u2019s own grey box with the web address across the top. They now ask the way the rest of the app does.'
+    ]
+  },
+  {
+    date: '2026-09-17',
     version: 62,
     notes: [
       'After you ask for a sign-in link or add an email, Settings now keeps a notice at the top until you actually open the link \u2014 with a Resend button. Nothing is signed in or linked until that link is opened, and the old one-line note vanished the moment you closed the dialog.'

@@ -216,6 +216,25 @@ if(d)document.documentElement.classList.add("dark")}catch(e){}})()</script>
   </menu>
 </dialog>
 
+<!-- Replaces prompt() and confirm(). One dialog, reused, because the point is
+     that every question this app asks looks like every other thing it shows
+     you. The native sheets paint the origin across the top and the platform's
+     blue OK/Cancel — and on an installed PWA the URL is the one thing the app
+     has otherwise stopped showing you. -->
+<dialog id="ask-dialog" tabindex="-1">
+  <form id="ask-form">
+    <h3 id="ask-title"></h3>
+    <p class="dialog-note" id="ask-note" hidden></p>
+    <label id="ask-field" hidden><span id="ask-label"></span>
+      <input id="ask-input" autocomplete="off" enterkeyhint="done">
+    </label>
+    <menu>
+      <button type="submit" class="btn-clay" id="ask-ok">OK</button>
+      <button type="button" id="ask-cancel">Cancel</button>
+    </menu>
+  </form>
+</dialog>
+
 <dialog id="notes-dialog" tabindex="-1">
   <div class="dialog-head">
     <h3>What’s new</h3>

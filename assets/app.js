@@ -1172,10 +1172,72 @@ function onLongPress(container, selector, handler) {
   window.__setListAnimating = (v) => { animating = v; };  // Task 7 uses this
 })();
 
+/* Every question this app asks, in one dialog.
+
+   prompt() and confirm() render a browser sheet: the origin across the top,
+   the platform's blue OK/Cancel underneath, none of this app's type, colour
+   or spacing. On an installed PWA it is worse than mismatched — the URL is
+   the one thing the app has otherwise stopped showing you, and a dialog that
+   suddenly names a pages.dev host reads like something went wrong.
+
+   Returns a Promise so the call sites read the way the natives they replaced
+   did. Pass `value` (even '') to get a text field back, and the answer is a
+   string or null; omit it and the answer is a plain true/false. */
+function ask(opts) {
+  const dlg = document.getElementById('ask-dialog');
+  const form = document.getElementById('ask-form');
+  const input = document.getElementById('ask-input');
+  const cancel = document.getElementById('ask-cancel');
+  const ok = document.getElementById('ask-ok');
+  const note = document.getElementById('ask-note');
+  const hasField = opts.value !== undefined && opts.value !== null;
+
+  document.getElementById('ask-title').textContent = opts.title || '';
+  note.textContent = opts.note || '';
+  note.hidden = !opts.note;
+  document.getElementById('ask-label').textContent = opts.label || '';
+  document.getElementById('ask-field').hidden = !hasField;
+  // Disabled, not just hidden: a hidden label still leaves its input in the
+  // tab order, so a confirm would hand the first Tab to an invisible field.
+  input.disabled = !hasField;
+  input.value = hasField ? opts.value : '';
+  input.placeholder = opts.placeholder || '';
+  ok.textContent = opts.confirmLabel || 'OK';
+  ok.classList.toggle('btn-danger', !!opts.danger);
+  ok.classList.toggle('btn-clay', !opts.danger);
+  cancel.textContent = opts.cancelLabel || 'Cancel';
+
+  return new Promise((resolve) => {
+    let done = false;
+    const finish = (val) => {
+      if (done) return;
+      done = true;
+      form.removeEventListener('submit', onSubmit);
+      cancel.removeEventListener('click', onCancel);
+      dlg.removeEventListener('close', onClose);
+      resolve(val);
+    };
+    /* finish() BEFORE close(), so the close listener is already gone by the
+       time it would fire. Otherwise this depends on whether the browser fires
+       `close` synchronously, and the answer differs between them. */
+    const onSubmit = (e) => { e.preventDefault(); finish(hasField ? input.value : true); dlg.close(); };
+    const onCancel = () => { finish(hasField ? null : false); dlg.close(); };
+    /* Escape and a backdrop tap both fire `close` and nothing else, so the
+       cancelled answer has to be the default rather than a third branch. */
+    const onClose = () => finish(hasField ? null : false);
+
+    form.addEventListener('submit', onSubmit);
+    cancel.addEventListener('click', onCancel);
+    dlg.addEventListener('close', onClose);
+    dlg.showModal();
+    if (hasField) { input.focus(); input.select(); }
+  });
+}
+
 document.getElementById('list-store').addEventListener('click', async (e) => {
   e.stopPropagation();                     // do not arm the swipe
   const from = state.currentList;
-  const raw = prompt('Rename this list', from);
+  const raw = await ask({ title: 'Rename this list', value: from, confirmLabel: 'Rename' });
   if (raw === null || raw.trim() === from) return;
   const check = Store.canAddList(state.roster.filter((n) => n !== from), raw);
   if (!check.ok) { showBanner(check.reason); return; }
@@ -1256,9 +1318,11 @@ categoryList.addEventListener('change', (e) => {
 
 /* "＋ New category…": prompt, add a row, select it. A category is just a string
    on the item, so nothing is persisted until the item itself is saved. */
-categoryList.addEventListener('click', (e) => {
+categoryList.addEventListener('click', async (e) => {
   if (!e.target.closest('#category-new')) return;
-  const name = (prompt('New category name') || '').trim();
+  const name = (await ask({
+    title: 'New category', value: '', placeholder: 'e.g. Bakery', confirmLabel: 'Add'
+  }) || '').trim();
   if (!name) return; // cancelled — the list stays as it was
   // Re-use a row that already matches, so casing variants don't split a category.
   const existing = [...categoryList.querySelectorAll('input[name="category"]')]
@@ -1333,9 +1397,10 @@ listPicker.addEventListener('change', (e) => {
 
    `#meal-dialog` is deliberately NOT routed through here: its only purpose is
    typing a name, so the keyboard is the point. */
-/* A prompt(), not a dialog: naming a list is one field, and this app already
-   uses confirm() for the destructive paths. The card is not a list until it
-   is named — cancelling leaves the roster untouched. */
+/* An inline card, not ask(): naming a list is the whole screen's purpose
+   here, and a dialog over an otherwise empty list would be a modal asking
+   about nothing. The card is not a list until it is named — cancelling
+   leaves the roster untouched. */
 /* Delegated, because the card is re-rendered on every list switch and a
    listener bound to the input itself would die with it. */
 document.getElementById('list').addEventListener('click', async (e) => {
@@ -1693,10 +1758,14 @@ document.getElementById('lists-manage').addEventListener('click', async (e) => {
 
   if (act === 'del') {
     const count = Store.itemsForList(state.items, name).length;
-    const msg = count
-      ? `Delete the ${name} list? ${count} item${count === 1 ? '' : 's'} will come off the list. Stock and inventory are not affected.`
-      : `Delete the ${name} list?`;
-    if (!confirm(msg)) return;
+    const ok = await ask({
+      title: `Delete the ${name} list?`,
+      note: count
+        ? `${count} item${count === 1 ? '' : 's'} will come off the list. Stock and inventory are not affected.`
+        : 'Stock and inventory are not affected.',
+      confirmLabel: 'Delete', danger: true
+    });
+    if (!ok) return;
     if (count) await commitAll(Store.clearList(state.items, name), null);
     state.roster = state.roster.filter((n) => n !== name);
     await saveRoster();
@@ -1852,7 +1921,12 @@ document.getElementById('restore-file').addEventListener('change', async (e) => 
   let data;
   try { data = JSON.parse(await file.text()); } catch { showBanner('Restore failed: not valid JSON.'); return; }
   if (!Store.validateImport(data)) { showBanner('Restore failed: unrecognized file format.'); return; }
-  if (!confirm('Restore replaces everything currently in the app with this backup. Continue?')) return;
+  const ok = await ask({
+    title: 'Restore this backup?',
+    note: 'Everything currently in the app is replaced by what is in the file.',
+    confirmLabel: 'Restore', danger: true
+  });
+  if (!ok) return;
   const items = Store.normalizeImport(data.items); // v1 backups predate price history
   const meals = Store.normalizeImportMeals(data.meals, items); // v1 backups predate meals
   // replace: the backup becomes the whole truth, tombstones included.
