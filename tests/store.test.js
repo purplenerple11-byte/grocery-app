@@ -1400,6 +1400,63 @@ test('attachEmail surfaces a server refusal instead of claiming success', async 
   resetSync();
 });
 
+test('attachEmail reports the pending address so the UI can keep saying so', async () => {
+  await joinFixture();
+  await Sync.startHouseholdAnonymously();
+  assertEqual(Sync.snapshotStatus().newEmail, '', 'nothing pending before');
+  await Sync.attachEmail('me@example.com');
+  // The whole point of the standing card: this survives the dialog closing,
+  // because it is read back off the session rather than remembered locally.
+  assertEqual(Sync.snapshotStatus().newEmail, 'me@example.com');
+  resetSync();
+});
+
+// ---- pending confirmation ----
+
+test('pendingEmail says nothing when nothing was sent', () => {
+  assertEqual(Store.pendingEmail(null, 1000).show, false);
+  assertEqual(Store.pendingEmail({ email: '' }, 1000).show, false);
+});
+
+test('pendingEmail blocks a resend inside the cooldown and reports the wait', () => {
+  const now = 10_000_000;
+  const p = Store.pendingEmail({ email: 'a@b.c', kind: 'signin', sentAt: now - 60_000 }, now);
+  assertEqual(p.show, true);
+  assertEqual(p.email, 'a@b.c');
+  assertEqual(p.kind, 'signin');
+  assertEqual(p.canResend, false);
+  assertEqual(p.waitMs, Store.EMAIL_RESEND_COOLDOWN_MS - 60_000);
+});
+
+test('pendingEmail allows a resend once the cooldown has passed', () => {
+  const now = 10_000_000;
+  const p = Store.pendingEmail({ email: 'a@b.c', kind: 'attach', sentAt: now - Store.EMAIL_RESEND_COOLDOWN_MS }, now);
+  assertEqual(p.canResend, true);
+  assertEqual(p.waitMs, 0);
+});
+
+test('pendingEmail treats an unknown send time as sendable', () => {
+  // A second device sees new_email from the server with no local stamp. Better
+  // to offer a resend and let the server rate-limit than to show a countdown
+  // invented out of nothing.
+  const p = Store.pendingEmail({ email: 'a@b.c', kind: 'attach' }, 10_000_000);
+  assertEqual(p.canResend, true);
+});
+
+test('pendingEmail defaults an unrecognised kind to attach', () => {
+  assertEqual(Store.pendingEmail({ email: 'a@b.c' }, 1000).kind, 'attach');
+  assertEqual(Store.pendingEmail({ email: 'a@b.c', kind: 'signin' }, 1000).kind, 'signin');
+});
+
+test('resendWaitLabel rounds up so it never promises an early send', () => {
+  assertEqual(Store.resendWaitLabel(0), '');
+  assertEqual(Store.resendWaitLabel(-5), '');
+  assertEqual(Store.resendWaitLabel(1), '1 minute');
+  assertEqual(Store.resendWaitLabel(60_000), '1 minute');
+  assertEqual(Store.resendWaitLabel(61_000), '2 minutes');
+  assertEqual(Store.resendWaitLabel(29 * 60_000), '29 minutes');
+});
+
 test('adopt=replace discards the joining device list instead of uploading it', async () => {
   const client = await joinFixture();
   await DB.replaceAllWithMeals([Store.createItem('My Own Milk', { id: 'mine' })], []);

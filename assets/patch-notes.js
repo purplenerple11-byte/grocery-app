@@ -12,6 +12,13 @@
 const PATCH_NOTES = [
   {
     date: '2026-09-17',
+    version: 62,
+    notes: [
+      'After you ask for a sign-in link or add an email, Settings now keeps a notice at the top until you actually open the link \u2014 with a Resend button. Nothing is signed in or linked until that link is opened, and the old one-line note vanished the moment you closed the dialog.'
+    ]
+  },
+  {
+    date: '2026-09-17',
     version: 61,
     notes: [
       'Once you are in a household, Settings now asks for your name and takes you straight to the box. Without it, items you add turn up on everyone else\u2019s phone with no idea who put them there.'

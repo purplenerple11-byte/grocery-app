@@ -105,7 +105,13 @@ const Sync = {
       householdId: Sync.householdId,
       lastSyncAt: Sync.lastSyncAt,
       error: Sync.lastError,
-      anonymous: Sync.isAnonymous
+      anonymous: Sync.isAnonymous,
+      /* GoTrue parks an unconfirmed address in auth.users.email_change and
+         exposes it as new_email until the link is opened. That makes "waiting
+         on a confirmation" server state, not something this app has to
+         remember — it survives a reload, a reinstall and a different device,
+         and it clears itself the moment the link is clicked. */
+      newEmail: (Sync.session && Sync.session.user && Sync.session.user.new_email) || ''
     };
   },
 
@@ -263,8 +269,12 @@ const Sync = {
     if (!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(clean)) {
       throw new Error('That does not look like an email address.');
     }
-    const { error } = await Sync.client.auth.updateUser({ email: clean });
+    const { data, error } = await Sync.client.auth.updateUser({ email: clean });
     if (error) throw error;
+    /* Adopt the returned user so new_email is readable on the very next render.
+       Without this the pending card only appears after a token refresh, i.e.
+       up to an hour after the one action it is meant to explain. */
+    if (data && data.user && Sync.session) Sync.session.user = data.user;
     return clean;
   },
 

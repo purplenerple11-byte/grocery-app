@@ -55,6 +55,45 @@ const Store = {
     };
   },
 
+  /* Supabase's built-in mailer allows two messages an hour. Half of that, so
+     a resend is always available before the budget is, and a second tap can
+     never be the thing that locks someone out of the first link. */
+  EMAIL_RESEND_COOLDOWN_MS: 30 * 60 * 1000,
+
+  /* A confirmation link that was sent but never opened.
+
+     Both email actions in this app finish somewhere the app cannot see — in a
+     mail client, on whatever device happens to be nearby. Until the link is
+     opened, nothing has happened: the magic link has not signed anyone in and
+     `updateUser` has not attached the address. The old UI said so in a note
+     that disappeared with the dialog, so the state you were left in was
+     invisible at exactly the moment it mattered.
+
+     `kind` decides which sentence the card tells, because the two failures are
+     not the same one. 'signin' means you are still signed out. 'attach' means
+     you are signed in but the identity is still browser-bound — the thing
+     attaching an email exists to fix. */
+  pendingEmail(pending, now) {
+    const email = (pending && pending.email) || '';
+    if (!email) return { show: false, email: '', kind: '', canResend: false, waitMs: 0 };
+    const waitMs = Math.max(0, Store.EMAIL_RESEND_COOLDOWN_MS - (now - ((pending && pending.sentAt) || 0)));
+    return {
+      show: true,
+      email,
+      kind: pending.kind === 'signin' ? 'signin' : 'attach',
+      canResend: waitMs === 0,
+      waitMs
+    };
+  },
+
+  /* Round UP. Saying "1 minute" with 61 seconds left earns a rate-limit error
+     from the server, which reads as the app being broken rather than early. */
+  resendWaitLabel(waitMs) {
+    if (waitMs <= 0) return '';
+    const mins = Math.ceil(waitMs / 60000);
+    return mins === 1 ? '1 minute' : mins + ' minutes';
+  },
+
   /* Groups items by category (in CATEGORY_ORDER, unknown categories last and
      alphabetical), then sorts within each category block. `secondary(item)`
      returns a bucket number to sort ascending by (e.g. 0 = first); ties, and

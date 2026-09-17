@@ -45,7 +45,9 @@ function makeFakeSupabase({ items = [], meals = [], households = [], household =
       async updateUser(patch) {
         calls.push({ auth: 'updateUser', patch });
         if (updateUserFail) return { data: null, error: updateUserFail };
-        return { data: { user: { id: 'anon-1' } }, error: null };
+        // Mirrors GoTrue: an email change is parked in new_email and the user
+        // stays unconfirmed until the link is opened.
+        return { data: { user: { id: 'anon-1', new_email: patch.email } }, error: null };
       },
       async signOut() { return { error: null }; }
     },

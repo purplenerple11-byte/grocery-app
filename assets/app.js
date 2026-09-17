@@ -2003,6 +2003,67 @@ function showSyncError(msg) {
   slot.hidden = false;
 }
 
+/* A confirmation link that was sent and not yet opened.
+
+   The previous version of this said the right thing in a .dialog-note and then
+   threw it away with the dialog. Closing Settings is the normal next move
+   after typing an email, so the one piece of state you needed to remember was
+   the one guaranteed to be gone before you needed it. */
+const PENDING_EMAIL_KEY = 'sync.pendingEmail';
+
+function readPendingEmail() {
+  try { return JSON.parse(localStorage.getItem(PENDING_EMAIL_KEY) || 'null') || null; }
+  catch (e) { return null; }
+}
+function writePendingEmail(email, kind) {
+  try { localStorage.setItem(PENDING_EMAIL_KEY, JSON.stringify({ email, kind, sentAt: Date.now() })); }
+  catch (e) { /* private mode; the card just loses its cooldown, not its point */ }
+}
+function clearPendingEmail() {
+  try { localStorage.removeItem(PENDING_EMAIL_KEY); } catch (e) {}
+}
+
+/* Server state wins wherever there is any. `new_email` is the truth about an
+   outstanding confirmation and clears itself when the link is opened; the
+   local stamp only supplies the send time GoTrue does not expose. The magic
+   link has no session to ask, so there the stamp is the whole story. */
+function pendingEmailState(st) {
+  const stamp = readPendingEmail();
+  const signedOut = st.status === 'off' || st.status === 'signed-out';
+  if (!signedOut && stamp && stamp.kind === 'signin') clearPendingEmail();
+
+  let pending = null;
+  if (st.newEmail) {
+    pending = {
+      email: st.newEmail,
+      kind: 'attach',
+      sentAt: stamp && stamp.email === st.newEmail ? stamp.sentAt : 0
+    };
+  } else if (signedOut && stamp && stamp.kind === 'signin') {
+    pending = stamp;
+  }
+  return Store.pendingEmail(pending, Date.now());
+}
+
+function pendingEmailHtml(p) {
+  if (!p.show) return '';
+  /* "Use a different email" only on the sign-in path. Dismissing the attach
+     card would hide a confirmation that is still genuinely pending on the
+     server, which is a lie the next render would have to un-tell. */
+  return `<div class="pending-email">
+      <h3>Check your email</h3>
+      <p>A link is waiting at <strong>${escapeHtml(p.email)}</strong>.
+        ${p.kind === 'signin'
+          ? 'You are not signed in until you open it.'
+          : 'This account is not linked to that address until you open it.'}</p>
+      <div class="pending-email-row">
+        <button type="button" id="sync-resend-btn"${p.canResend ? '' : ' disabled'}>Resend</button>
+        ${p.kind === 'signin' ? '<button type="button" id="sync-pending-dismiss">Use another address</button>' : ''}
+      </div>
+      ${p.canResend ? '' : `<p class="pending-email-wait">Again in ${escapeHtml(Store.resendWaitLabel(p.waitMs))}</p>`}
+    </div>`;
+}
+
 function renderSyncPanel(s) {
   const panel = document.getElementById('sync-panel');
   const body = document.getElementById('sync-body');
@@ -2015,12 +2076,14 @@ function renderSyncPanel(s) {
   const typedEmail = (document.getElementById('sync-email') || {}).value || '';
   const typedCode = (document.getElementById('sync-code') || {}).value || '';
   const typedAttach = (document.getElementById('sync-attach-email') || {}).value || '';
+  const pendingHtml = pendingEmailHtml(pendingEmailState(st));
 
   if (st.status === 'off' || st.status === 'signed-out') {
     /* Code first: joining a household is the common case (one person starts
        it, everyone else is invited), and it needs no email at all — which
        matters because the built-in mailer allows 2 messages an hour. */
     body.innerHTML = `
+      ${pendingHtml}
       <p class="dialog-note">Your list stays on this device until you sign in.</p>
       <input type="text" id="sync-code" placeholder="Invite code" maxlength="13"
              autocapitalize="characters" autocomplete="one-time-code"
@@ -2069,6 +2132,7 @@ function renderSyncPanel(s) {
   }[st.status] || st.status;
 
   body.innerHTML = `
+    ${pendingHtml}
     <p class="pill"><span class="dot ${SYNC_DOTS[st.status] || 'pending'}"></span>${escapeHtml(label)}</p>
     <p class="dialog-note">${escapeHtml(st.email || '')}</p>
     ${st.status === 'error' ? '<button id="sync-retry-btn">Retry</button>' : ''}
@@ -2085,8 +2149,7 @@ function renderSyncPanel(s) {
         need a fresh invite code from someone still in it.</p>
       <input type="email" id="sync-attach-email" placeholder="you@example.com"
              autocomplete="email" value="${escapeHtml(typedAttach)}">
-      <button id="sync-attach-btn">Add an email</button>
-      <p class="dialog-note" id="sync-attach-out" hidden></p>` : ''}
+      <button id="sync-attach-btn">Add an email</button>` : ''}
     <button id="sync-signout-btn">Sign out</button>
     <p class="sync-error" id="sync-error" hidden></p>
     <p class="dialog-note" id="sync-diag" hidden></p>
@@ -2221,8 +2284,11 @@ document.getElementById('settings-dialog').addEventListener('click', async (e) =
       const email = document.getElementById('sync-email').value;
       await ensureSync();
       await Sync.signInWithEmail(email, redirectTo);
-      document.getElementById('sync-body').innerHTML =
-        `<p class="dialog-note">Check ${escapeHtml(email)} for a sign-in link.</p>`;
+      /* Stamp, then re-render into the standing card. The old branch wrote a
+         one-line note straight into #sync-body, which meant the instruction
+         lived exactly as long as the dialog did. */
+      writePendingEmail(email.trim(), 'signin');
+      renderSyncPanel();
     } else if (id === 'sync-google-btn') {
       await ensureSync();
       await Sync.signInWithGoogle(redirectTo);
@@ -2277,13 +2343,30 @@ document.getElementById('settings-dialog').addEventListener('click', async (e) =
       const email = document.getElementById('sync-attach-email').value;
       busy(e.target, 'Sending…');
       const clean = await Sync.attachEmail(email);
-      const out = document.getElementById('sync-attach-out');
-      out.hidden = false;
       /* Deliberately not "your account is now safe". Nothing has changed until
          the link is opened, and saying otherwise invites exactly the data loss
-         this whole action exists to prevent. */
-      out.textContent = `Check ${clean} for a confirmation link. The account is linked once you open it.`;
+         this whole action exists to prevent. The card now says so from the top
+         of the panel, and keeps saying it until the server stops reporting a
+         pending change. */
+      writePendingEmail(clean, 'attach');
+      renderSyncPanel();
+    } else if (id === 'sync-resend-btn') {
+      const p = pendingEmailState(typeof Sync !== 'undefined' ? Sync.snapshotStatus() : { status: 'off' });
+      if (!p.show) return;
+      busy(e.target, 'Sending…');
+      await ensureSync();
+      if (p.kind === 'signin') await Sync.signInWithEmail(p.email, redirectTo);
+      else await Sync.attachEmail(p.email);
+      writePendingEmail(p.email, p.kind);
+      renderSyncPanel();
+    } else if (id === 'sync-pending-dismiss') {
+      clearPendingEmail();
+      renderSyncPanel();
     } else if (id === 'sync-signout-btn') {
+      /* The stamp is about this browser, not the account. Leaving a stale
+         "check your email" card behind for the next person to sign in here
+         would point at an address that has nothing to do with them. */
+      clearPendingEmail();
       await Sync.signOut();
     } else if (id === 'sync-report-btn') {
       await copySyncReport();

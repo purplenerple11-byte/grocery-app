@@ -699,3 +699,37 @@ dialog menu button, .import-label {
    "three lists and somewhere to make a fourth". */
 #list-dots i.add { background: none; box-shadow: inset 0 0 0 1px var(--hairline); }
 #list-dots i.add.on { background: none; box-shadow: inset 0 0 0 1.5px var(--muted); }
+
+/* A confirmation link that was sent and not opened.
+
+   Sits at the very top of the sync panel and stays there across re-renders,
+   reopens and reloads, because the failure it prevents is silent: you type an
+   email, feel finished, close the dialog, and nothing has actually happened.
+   Given a left rule and a filled ground rather than a colour, so it reads as
+   an outstanding task in both themes without borrowing --out, which is the
+   destructive colour everywhere else in this app. */
+.pending-email {
+  background: var(--fill); border: 1px solid var(--hairline);
+  border-left: 3px solid var(--clay);
+  border-radius: 8px; padding: 12px 14px; margin: 0 0 14px;
+}
+.pending-email h3 { margin: 0 0 4px; font-size: 15px; font-weight: 600; }
+.pending-email p { margin: 0; font-size: 13px; line-height: 1.5; color: var(--ink); }
+.pending-email strong { font-weight: 600; word-break: break-all; }
+.pending-email-row {
+  display: flex; flex-wrap: wrap; gap: 8px; align-items: center; margin-top: 10px;
+}
+/* Overrides the full-width rule #sync-body button carries, so Resend and
+   "Use a different email" can share a line instead of stacking. */
+/* flex: 0 0 auto, not just width: auto — an inherited `flex: 1` was splitting
+   the row into equal halves and wrapping the longer label inside its button. */
+#sync-body .pending-email-row button {
+  flex: 0 0 auto; width: auto; margin: 0; padding: 6px 12px; font-size: 13px;
+  border: 1px solid var(--field-line); background: var(--surface);
+  color: var(--ink); border-radius: 6px;
+}
+#sync-body .pending-email-row button:disabled { opacity: .5; }
+/* Below the buttons, not beside them. At the dialog's 360px cap a third item
+   in that row squeezed "Use another address" down to 79px, where it wrapped
+   inside its own button. */
+.pending-email-wait { display: block; margin: 6px 0 0; font-size: 12px; color: var(--muted); }
