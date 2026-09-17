@@ -12,6 +12,13 @@
 const PATCH_NOTES = [
   {
     date: '2026-09-17',
+    version: 61,
+    notes: [
+      'Once you are in a household, Settings now asks for your name and takes you straight to the box. Without it, items you add turn up on everyone else\u2019s phone with no idea who put them there.'
+    ]
+  },
+  {
+    date: '2026-09-17',
     version: 60,
     notes: [
       'You can now start a household without an email address — tap Start a household in Settings. Previously only someone with an invite code could get in, which meant nobody could be first.',

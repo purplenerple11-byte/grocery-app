@@ -205,6 +205,19 @@ button { font-family: var(--sans); cursor: pointer; }
    Claim the width here. .btn-clay also needs re-rounding: its square top
    corners are shaped for a dialog footer, and mid-panel they read as a button
    that came unstuck from something. Same fix, same reason, as #new-list-create. */
+/* A one-shot highlight for a field someone was just sent to from elsewhere in
+   the sheet. The jump is smooth-scrolled, so without this the cursor lands in
+   a field that looks like every other field and the trip reads as a no-op. */
+@keyframes field-flash {
+  from { border-color: var(--clay); }
+  60%  { border-color: var(--clay); }
+  to   { border-color: var(--field-line); }
+}
+.field-flash { animation: field-flash 1.4s ease-out; }
+@media (prefers-reduced-motion: reduce) {
+  .field-flash { animation: none; border-color: var(--clay); }
+}
+
 #sync-body button { width: 100%; }
 #sync-body .btn-clay { border-radius: 6px !important; }
 #sync-panel button[disabled] { opacity: .6; }
