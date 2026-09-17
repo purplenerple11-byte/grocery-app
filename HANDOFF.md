@@ -179,8 +179,10 @@ index.html                 all markup incl. dialogs (#item-dialog, #trip-dialog,
 assets/style.css           every style; design tokens at :root
 assets/store.js            Store = pure state fns + DB = IndexedDB adapter. No DOM.
 assets/app.js              all UI: rendering, event delegation, dialogs
+assets/version.js          APP_VERSION — the single source for the About row
 sw.js                      service worker; bump `const CACHE` when assets change
 tools/make_icons.py        regenerates icons/ (stdlib only, no Pillow)
+tools/check-version.sh     fails if sw.js, version.js and patch-notes disagree
 tests/run-tests.html       open in browser to run tests
 tests/fake-supabase.js     hand-written Supabase stand-in; no network in tests
 assets/sync.js             sync engine: auth, outbox push, delta pull. No DOM.
@@ -188,7 +190,7 @@ assets/sync-config.js      Supabase URL + publishable key (public by design)
 supabase/schema.sql        tables, RLS policies, RPCs — paste into the SQL editor
                            ⚠ a RECORD, not a migration. Editing it changes
                            nothing until someone runs it. See "schema drift".
-tests/store.test.js        125 tests, all passing (incl. sync reconciliation)
+tests/store.test.js        170 tests, all passing (incl. sync reconciliation)
 PRODUCT.md                 durable product truth (users, mechanism, constraints)
 STYLE_GUIDE.md             the house visual system (source of truth for look)
 docs/superpowers/specs/    the design spec — read this first
@@ -370,8 +372,61 @@ python3 -m http.server 8000        # from repo root; service worker needs http
    cannot survive a reinstall, cannot agree between two devices, and grows
    without bound.
 
+15. **There is no Playwright on this machine.** CLAUDE.md pointed at Chromium in
+   `/opt/pw-browsers/` for headless runs. That path does not exist, and
+   `playwright` is not installed. Don't go hunting for it or npm-install one —
+   the repo's no-toolchain rule is the reason it isn't there.
+
+   Serve the repo and drive the page in a browser instead:
+   ```bash
+   python3 -m http.server 8777
+   ```
+   then open `/tests/run-tests.html` and read `document.title`, which is
+   `✓ all passing` or lists the failures. `file://` does **not** work for the
+   test page any more — the relative `<script src>` tags do not resolve when the
+   page is opened as a local file in a sandboxed viewer, and you get a blank
+   "running…" that looks like a hang.
+
+16. **An empty list and an empty database are different questions.** `#list`
+   renders empty after every completed trip, which is the normal healthy state,
+   not a signal about the install. Anything meant to happen once, on a genuinely
+   new install, must read `state.items.length` (or a stamped setting), never the
+   rendered list. This is what `Store.firstBootDefaults` exists to centralise.
+
 
 ## Status
+
+**V8a — first run for a stranger (built 2026-09-17, shipped v59).** A walkthrough
+in a clean mobile viewport found the app leaking "you already know how this
+works" in six places. Four are fixed and live; two remain (see next step).
+
+`Store.firstBootDefaults(items)` is the whole decision, pure and tested. An
+install holding zero items has never been used by anyone; one arriving at the
+migration is full. From that one signal come three defaults: the first list is
+called `Groceries` rather than `Hannaford`, the header Recipes link is off, and
+the how-it-works card has not been seen. The owner's device takes the other
+branch and is bit-for-bit unchanged.
+
+⚠ **The first-run card is gated on `state.items.length`, not on the rendered
+list being empty.** The list empties after *every* completed trip. Gating on
+what `#list` renders would turn a first-run card into one you see after every
+shop. The `notesLastSeen` stamp in `boot()` solves the same problem the same
+way — copy that pattern, not the obvious one.
+
+**Versions are single-sourced now, except one on purpose.** There used to be
+three and they disagreed: `sw.js` v58, About v51, newest patch note 50.
+`assets/version.js` holds `APP_VERSION`; About renders it and patch notes are
+checked against it. `sw.js` keeps its own literal deliberately — a stale
+service-worker cache fails *invisibly*, so coupling it to `importScripts`
+update semantics would trade a visible problem for one you cannot see.
+`tools/check-version.sh` is what keeps the three honest. Run it before merging.
+
+**Next step:** commit B — items 4 and 5 from the spec, both auth surface.
+"Start a household" on the signed-out panel (`Sync.signInAnonymously` and
+`Sync.startHousehold` already exist; only the UI is missing, so the first
+person in a household currently cannot start one without email), and an
+"Add an email" action to rescue an anonymous identity before it is lost with
+the browser profile. Spec: `docs/superpowers/specs/2026-09-17-first-run-experience-design.md`.
 
 **V7 — per-store lists (built 2026-08-25, repaired 2026-08-26).** One list per
 store; `item.listStore` holds the name. A list is a name, not a record — the

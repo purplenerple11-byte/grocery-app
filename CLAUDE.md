@@ -28,12 +28,38 @@ without a bump an already-installed PWA keeps serving the old files and your
 change is invisible on the device — the app looks unchanged even though the
 deploy succeeded. This is the single easiest mistake to make here.
 
+Then bump `APP_VERSION` in `assets/version.js` to match, add a patch note, and
+run the check:
+
+```bash
+sh tools/check-version.sh
+```
+
+It fails if `sw.js`, `assets/version.js` and the newest entry in
+`assets/patch-notes.js` disagree. They drifted eight releases apart once —
+About said v51 while the cache was v58 — which made both the version row and
+the What's new screen lie about what you were running. `sw.js` keeps its own
+literal on purpose; `assets/version.js` says why.
+
 ## Tests
 
 `tests/run-tests.html` in a browser; the page title shows ✓/✗. There is no test
-runner and no CI — if you want them verified headlessly, drive the page with
-Playwright (Chromium is at `/opt/pw-browsers/`), then remove any `node_modules`
-you installed so it never gets committed.
+runner and no CI.
+
+**Serve it, don't open it as a file.** The relative `<script src>` tags do not
+resolve over `file://` in a sandboxed viewer and you get a blank "running…"
+that reads like a hang:
+
+```bash
+python3 -m http.server 8777
+```
+
+then open `/tests/run-tests.html` and read `document.title`. Use exactly ONE
+tab — a second holds IndexedDB open and the DB tests hang for real.
+
+There is **no Playwright on this machine** and no Chromium at
+`/opt/pw-browsers/`, whatever earlier notes said. Don't install one; the
+no-toolchain rule is why it isn't there.
 
 New `Store` functions get tests in `tests/store.test.js`.
 
