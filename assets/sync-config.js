@@ -13,5 +13,10 @@ const SYNC_CONFIG = {
   /* Session lives in localStorage under this prefix. boot() checks for it to
      decide whether to download the 205 KB client at all, so a signed-out user
      pays nothing. */
-  storagePrefix: 'sb-dplhjgexnkzwbdstwgkj-auth-token'
+  storagePrefix: 'sb-dplhjgexnkzwbdstwgkj-auth-token',
+  /* Google OAuth is not configured on the project. The button was rendered
+     anyway and errored on tap, which is worse than not offering it. Flip this
+     to true once the provider is set up in the Supabase dashboard; nothing
+     else needs to change. */
+  googleEnabled: false
 };

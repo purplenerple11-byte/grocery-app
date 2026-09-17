@@ -5,7 +5,7 @@
 /* `fail` breaks everything; `pushFail` breaks ONLY upserts, which is the shape
    of the real 2026-08-05 outage — a column missing server-side made every
    write 400 while reads kept returning 200. */
-function makeFakeSupabase({ items = [], meals = [], households = [], household = 'h1', session = { user: { id: 'u1', email: 'a@b.c' } }, fail = null, pushFail = null, anonDisabled = false, rpcFail = null } = {}) {
+function makeFakeSupabase({ items = [], meals = [], households = [], household = 'h1', session = { user: { id: 'u1', email: 'a@b.c' } }, fail = null, pushFail = null, anonDisabled = false, rpcFail = null, updateUserFail = null } = {}) {
   const tables = { items: items.slice(), meals: meals.slice(), households: households.slice() };
   const calls = [];
 
@@ -42,6 +42,11 @@ function makeFakeSupabase({ items = [], meals = [], households = [], household =
         return { data: { session: s }, error: null };
       },
       async signInWithOAuth() { return { error: null }; },
+      async updateUser(patch) {
+        calls.push({ auth: 'updateUser', patch });
+        if (updateUserFail) return { data: null, error: updateUserFail };
+        return { data: { user: { id: 'anon-1' } }, error: null };
+      },
       async signOut() { return { error: null }; }
     },
     async rpc(name) {

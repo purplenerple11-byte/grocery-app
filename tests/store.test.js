@@ -1323,6 +1323,83 @@ test('join reports clearly when anonymous sign-in is switched off server-side', 
   resetSync();
 });
 
+test('start a household with no code and no email', async () => {
+  const client = await joinFixture();
+  assertEqual(Sync.status, 'signed-out');
+
+  const hid = await Sync.startHouseholdAnonymously();
+  assertEqual(hid, 'h1');
+  assertEqual(Sync.isAnonymous, true);
+  assertEqual(Sync.enabled, true);
+  assert(client._calls.some((c) => c.auth === 'signInAnonymously'), 'signed in anonymously');
+  assert(client._calls.some((c) => c.rpc === 'ensure_household'), 'and created the household');
+  assert(!client._calls.some((c) => c.rpc === 'redeem_invite'), 'no invite code needed');
+  resetSync();
+});
+
+test('starting a household seeds this device, unlike joining one', async () => {
+  // The whole difference between the two paths. joinWithCode stamps
+  // seededHouseholdId so a joiner cannot silently upload its list over someone
+  // else's data; starting a household must NOT stamp it, because this device's
+  // list is precisely what the household should begin with.
+  await joinFixture();
+  await DB.replaceAllWithMeals([Store.createItem('Milk', { id: 'm1' })], []);
+  await Sync.startHouseholdAnonymously();
+
+  assertEqual(await DB.getSetting('sync.seededHouseholdId', null), null, 'seeding was not pre-claimed');
+  assertEqual((await Sync.seedFromLocal()).seeded, true, 'so the founder list becomes the household list');
+  resetSync();
+});
+
+test('a failed ensure_household does not strand a new anonymous session', async () => {
+  await joinFixture({ rpcFail: { message: 'could not create household' } });
+  let threw = null;
+  try { await Sync.startHouseholdAnonymously(); } catch (e) { threw = e.message; }
+  assert(/could not create household/.test(threw || ''), threw);
+  assertEqual(Sync.session, null, 'signed back out rather than sitting in choosing forever');
+  assertEqual(Sync.householdId, null);
+  resetSync();
+});
+
+test('starting reports clearly when anonymous sign-in is switched off server-side', async () => {
+  await joinFixture({ anonDisabled: true });
+  let threw = null;
+  try { await Sync.startHouseholdAnonymously(); } catch (e) { threw = e.message; }
+  assert(/not enabled on the server/.test(threw || ''), threw);
+  resetSync();
+});
+
+test('attachEmail rejects junk before spending a send', async () => {
+  // The mailer allows two an hour, so a typo must not cost one of them.
+  const client = await joinFixture();
+  await Sync.startHouseholdAnonymously();
+  const before = client._calls.length;
+  let threw = null;
+  try { await Sync.attachEmail('not-an-email'); } catch (e) { threw = e.message; }
+  assert(/does not look like an email/.test(threw || ''), threw);
+  assertEqual(client._calls.length, before, 'no network call for an obviously bad address');
+  resetSync();
+});
+
+test('attachEmail converts an anonymous account, trimming the address', async () => {
+  const client = await joinFixture();
+  await Sync.startHouseholdAnonymously();
+  assertEqual(await Sync.attachEmail('  me@example.com '), 'me@example.com');
+  const call = client._calls.find((c) => c.auth === 'updateUser');
+  assert(call, 'called updateUser');
+  assertEqual(call.patch.email, 'me@example.com');
+  resetSync();
+});
+
+test('attachEmail surfaces a server refusal instead of claiming success', async () => {
+  await joinFixture({ updateUserFail: { message: 'email address already in use' } });
+  await Sync.startHouseholdAnonymously();
+  let threw = null;
+  try { await Sync.attachEmail('me@example.com'); } catch (e) { threw = e.message; }
+  assert(/already in use/.test(threw || ''), threw);
+  resetSync();
+});
+
 test('adopt=replace discards the joining device list instead of uploading it', async () => {
   const client = await joinFixture();
   await DB.replaceAllWithMeals([Store.createItem('My Own Milk', { id: 'mine' })], []);
