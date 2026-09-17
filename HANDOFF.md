@@ -190,7 +190,7 @@ assets/sync-config.js      Supabase URL + publishable key (public by design)
 supabase/schema.sql        tables, RLS policies, RPCs — paste into the SQL editor
                            ⚠ a RECORD, not a migration. Editing it changes
                            nothing until someone runs it. See "schema drift".
-tests/store.test.js        170 tests, all passing (incl. sync reconciliation)
+tests/store.test.js        178 tests, all passing (incl. sync reconciliation)
 PRODUCT.md                 durable product truth (users, mechanism, constraints)
 STYLE_GUIDE.md             the house visual system (source of truth for look)
 docs/superpowers/specs/    the design spec — read this first
@@ -393,6 +393,18 @@ python3 -m http.server 8000        # from repo root; service worker needs http
    new install, must read `state.items.length` (or a stamped setting), never the
    rendered list. This is what `Store.firstBootDefaults` exists to centralise.
 
+17. **Two tabs is also how you get a stale *parse*, not just a hang.** The
+   one-tab rule above is written about the DB tests hanging. It bites in a
+   second way: a tab that loaded the app earlier keeps running the JavaScript
+   it parsed then, so a freshly edited `assets/sync.js` can be correct on
+   disk, correct over `curl`, correct in `fetch(url)` from that very page —
+   and still missing from the live object. The symptom is
+   `Sync.someNewThing is not a function` while every cache check comes back
+   clean, which sends you hunting for a bug that is not there.
+
+   Unregistering the service worker and clearing `caches` does not fix it,
+   because neither is the cause. Close the tab and open a new one.
+
 
 ## Status
 
@@ -421,12 +433,36 @@ service-worker cache fails *invisibly*, so coupling it to `importScripts`
 update semantics would trade a visible problem for one you cannot see.
 `tools/check-version.sh` is what keeps the three honest. Run it before merging.
 
-**Next step:** commit B — items 4 and 5 from the spec, both auth surface.
-"Start a household" on the signed-out panel (`Sync.signInAnonymously` and
-`Sync.startHousehold` already exist; only the UI is missing, so the first
-person in a household currently cannot start one without email), and an
-"Add an email" action to rescue an anonymous identity before it is lost with
-the browser profile. Spec: `docs/superpowers/specs/2026-09-17-first-run-experience-design.md`.
+**V8b — the first person in a household (built 2026-09-17, shipped v60).**
+All six items from the spec are now live.
+
+`Sync.startHouseholdAnonymously()` puts "Start a household" on the signed-out
+panel. Before this, the only route to `startHousehold` ran through the
+`choosing` state, which you can only reach by email — two magic links an hour —
+so the one person who has to go first was the one person sign-in could not
+serve. No new engine: `signInAnonymously` and `ensure_household` were both
+already there and neither assumed an email.
+
+⚠ **It deliberately does NOT stamp `sync.seededHouseholdId`, where
+`joinWithCode` does.** Joining means someone else's data is already the truth
+and this device must ask before pushing anything. Starting means this device's
+list IS the household's list, so `seedFromLocal` should run. Get it backwards
+and you either strand a founder with an empty household or upload a joiner's
+list over everyone else's. There is a test pinning the difference — keep it.
+
+`Sync.attachEmail()` converts an anonymous account via `updateUser`. The
+success message says the link must be opened, **not** that the account is safe:
+nothing has changed until it is, and claiming otherwise invites exactly the
+loss the action exists to prevent.
+
+Google OAuth is not configured on the project and the button errored on tap.
+It now renders only when `SYNC_CONFIG.googleEnabled` is true.
+
+**Next step:** the one thing not verified is a live end-to-end against
+Supabase — tapping Start a household creates a real anonymous user and a real
+`households` row, so it was not run unasked. Everything below it is covered
+against `tests/fake-supabase.js`, and `joinWithCode` already proves anonymous
+sign-in is enabled on the project.
 
 **V7 — per-store lists (built 2026-08-25, repaired 2026-08-26).** One list per
 store; `item.listStore` holds the name. A list is a name, not a record — the
