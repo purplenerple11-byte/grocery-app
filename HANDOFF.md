@@ -458,11 +458,38 @@ loss the action exists to prevent.
 Google OAuth is not configured on the project and the button errored on tap.
 It now renders only when `SYNC_CONFIG.googleEnabled` is true.
 
-**Next step:** the one thing not verified is a live end-to-end against
-Supabase — tapping Start a household creates a real anonymous user and a real
-`households` row, so it was not run unasked. Everything below it is covered
-against `tests/fake-supabase.js`, and `joinWithCode` already proves anonymous
-sign-in is enabled on the project.
+**V8c — asking for a name when it has an audience (shipped v61).** "Your name"
+sat at the top of Settings with nothing saying what it was for, which made it
+look like a profile field in an app that has no profiles. It is not — it is the
+whole of the `by <name>` badge, and it does nothing until someone else is in the
+household. The ask now lives in the sync panel and appears only when
+`householdId` is set and the name is blank. The button scrolls to the field,
+focuses it and flashes the border rather than telling you where to look; you
+are already standing in Settings when you read it.
+
+**Backend verified read-only (2026-09-17).** The live write path was not
+executed — it creates a real anonymous user and a real `households` row — but
+everything it depends on was checked directly against the project:
+
+- `ensure_household()`, `redeem_invite(p_code text)`, `my_household()` and
+  `my_household_ids()` all exist, all `SECURITY DEFINER`.
+- `ensure_household()` gates on `auth.uid() is not null` only. No email check,
+  no `is_anonymous` check — so an anonymous caller is accepted, which is the
+  one thing `startHouseholdAnonymously` actually needed to be true. It also
+  returns an existing household rather than creating a second one, so a repeat
+  tap is harmless.
+- Anonymous sign-in is enabled and well used: 18 of 23 users are anonymous.
+
+⚠ **There are 18 anonymous users against 1 household and 10 memberships.** Some
+of those are testing leftovers, but the gap is the shape of the problem
+`attachEmail` exists for: an anonymous user with no membership has no way back
+in and nothing to prove it was ever anyone. Worth a cleanup pass before the
+store listing.
+
+**Next step:** run the live end-to-end if you want it — tap Start a household on
+a cleared profile and confirm the seed carries. It needs a permission the auto
+mode classifier withholds (it writes to the shared Supabase project), so it has
+to be approved or done by hand.
 
 **V7 — per-store lists (built 2026-08-25, repaired 2026-08-26).** One list per
 store; `item.listStore` holds the name. A list is a name, not a record — the
