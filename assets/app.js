@@ -1717,8 +1717,12 @@ document.getElementById('settings-btn').addEventListener('click', () => {
 const displayNameInput = document.getElementById('display-name-input');
 if (displayNameInput) {
   displayNameInput.addEventListener('input', async (e) => {
+    const wasBlank = !state.displayName;
     state.displayName = e.target.value.trim();
     await DB.putSetting('displayName', state.displayName);
+    /* Only on the transition, not on every keystroke — the panel below is
+       showing a nudge that is now either newly wrong or newly right. */
+    if (wasBlank !== !state.displayName) renderSyncPanel();
   });
 }
 
@@ -2068,6 +2072,11 @@ function renderSyncPanel(s) {
     <p class="pill"><span class="dot ${SYNC_DOTS[st.status] || 'pending'}"></span>${escapeHtml(label)}</p>
     <p class="dialog-note">${escapeHtml(st.email || '')}</p>
     ${st.status === 'error' ? '<button id="sync-retry-btn">Retry</button>' : ''}
+    ${st.householdId && !state.displayName ? `
+      <p class="dialog-note">Everything you add shows up on the other phones in
+        this household. Add your name and it arrives as &ldquo;by you&rdquo;
+        instead of appearing from nowhere.</p>
+      <button id="sync-name-btn">Add your name</button>` : ''}
     <button id="sync-invite-btn">Invite someone</button>
     <p class="dialog-note" id="sync-invite-out" hidden></p>
     ${st.anonymous ? `
@@ -2252,6 +2261,16 @@ document.getElementById('settings-dialog').addEventListener('click', async (e) =
       const out = document.getElementById('sync-invite-out');
       out.hidden = false;
       out.textContent = `Code: ${code} — single use, expires in 24 hours.`;
+    } else if (id === 'sync-name-btn') {
+      /* The field is already on this screen, just above the fold. Pointing at
+         it ("Settings → Your name") when you are standing in Settings is the
+         kind of instruction people read twice and still miss, so take them
+         there and put the cursor in it. */
+      const input = document.getElementById('display-name-input');
+      input.scrollIntoView({ block: 'center', behavior: 'smooth' });
+      input.focus();
+      input.classList.add('field-flash');
+      setTimeout(() => input.classList.remove('field-flash'), 1400);
     } else if (id === 'sync-attach-btn') {
       // Read before anything awaits, for the same reason the other two fields
       // are: an auth-state change re-renders this panel and swaps the input.

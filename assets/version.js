@@ -10,4 +10,4 @@
    that mechanism depend on importScripts update semantics would trade a
    problem you can see for one you cannot. tools/check-version.sh keeps the
    three honest instead, and CLAUDE.md points the bump step at it. */
-const APP_VERSION = 60;
+const APP_VERSION = 61;
