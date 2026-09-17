@@ -175,7 +175,8 @@ If the old GitHub Pages deployment is still installed anywhere, sign out of it
 ## Layout
 
 ```
-index.html                 all markup incl. dialogs (#item-dialog, #trip-dialog, #settings-dialog)
+index.html                 all markup incl. dialogs (#item-dialog, #trip-dialog,
+                           #settings-dialog, #ask-dialog — the shared prompt/confirm)
 assets/style.css           every style; design tokens at :root
 assets/store.js            Store = pure state fns + DB = IndexedDB adapter. No DOM.
 assets/app.js              all UI: rendering, event delegation, dialogs
@@ -190,7 +191,7 @@ assets/sync-config.js      Supabase URL + publishable key (public by design)
 supabase/schema.sql        tables, RLS policies, RPCs — paste into the SQL editor
                            ⚠ a RECORD, not a migration. Editing it changes
                            nothing until someone runs it. See "schema drift".
-tests/store.test.js        178 tests, all passing (incl. sync reconciliation)
+tests/store.test.js        184 tests, all passing (incl. sync reconciliation)
 PRODUCT.md                 durable product truth (users, mechanism, constraints)
 STYLE_GUIDE.md             the house visual system (source of truth for look)
 docs/superpowers/specs/    the design spec — read this first
@@ -406,6 +407,22 @@ python3 -m http.server 8000        # from repo root; service worker needs http
    because neither is the cause. Close the tab and open a new one.
 
 
+18. **An author `display` beats the UA's `[hidden]` rule, whatever the
+   specificity.** `dialog label { display: block }` meant `#ask-field.hidden
+   = true` did nothing, and the shared confirm dialog painted an empty text
+   box above its buttons. Setting `hidden` is not enough anywhere a rule in
+   `style.css` gives that element a `display`; there is now an explicit
+   `dialog label[hidden] { display: none }`. Nothing throws and nothing logs —
+   it is only visible on screen, which is the argument for screenshotting a
+   dialog rather than asserting on `.hidden`.
+
+19. **Re-parsing an edited asset needs the service worker gone AND a fresh
+   load.** While iterating on CSS, `fetch('/assets/style.css')` returned the
+   new file while `getComputedStyle` still reported the old rule: the page's
+   stylesheet had been served by the SW at load. Unregister the registrations,
+   `caches.delete` every key, *then* navigate again — clearing without the
+   reload proves nothing, and the reload without the clear re-registers it.
+
 ## Status
 
 **V8a — first run for a stranger (built 2026-09-17, shipped v59).** A walkthrough
@@ -490,6 +507,48 @@ store listing.
 a cleared profile and confirm the seed carries. It needs a permission the auto
 mode classifier withholds (it writes to the shared Supabase project), so it has
 to be approved or done by hand.
+
+**V8d — two things a stranger was left holding (shipped v62, v63).**
+
+*The confirmation link that was never obviously required (v62).* Both email
+actions in this app finish somewhere the app cannot see, and until the link is
+opened nothing has happened — the magic link has not signed anyone in and
+`updateUser` has not attached the address. The copy said so, in a
+`.dialog-note` that went away with the dialog. Closing Settings is the normal
+next move after typing an email, so the one piece of state you needed to
+remember was the one guaranteed to be gone first. A standing card now sits at
+the top of the sync panel until the link is opened.
+
+⚠ **The pending state is read from the server, not remembered.** GoTrue parks
+an unconfirmed address in `auth.users.email_change` and exposes it as
+`user.new_email`, so the card survives a reload and a reinstall and clears
+itself the moment the link is clicked. Only the magic-link path — which has no
+session to ask — uses a local stamp, cleared on sign-in, on sign-out and by
+"Use another address". `Sync.attachEmail` adopts the user object `updateUser`
+returns, or `new_email` would not be readable until the next token refresh,
+i.e. up to an hour after the action it explains. `Store.pendingEmail` and
+`Store.resendWaitLabel` are the pure parts. Resend has a 30-minute cooldown,
+half the mailer's two-an-hour budget, so a resend is always available before
+the budget is; the label rounds UP, because "1 minute" with 61 seconds left
+earns a rate-limit error that reads as the app being broken.
+
+*The browser's own dialogs (v63).* `prompt()` and `confirm()` survived in four
+places — renaming a list, adding a category, deleting a list, restoring a
+backup. Each painted a browser sheet with the origin across the top and the
+platform's blue OK/Cancel. On an installed PWA that is worse than mismatched:
+the URL is the one thing the app has otherwise stopped showing you. One shared
+`#ask-dialog` replaces all four. `ask()` returns a Promise — pass `value` and
+the answer is a string or null, omit it and it is true/false.
+
+**Next step:** the Play Store readiness list is the open work — privacy policy
+page, in-app account deletion, Data Safety answers, listing assets. The
+developer-account clock (12 testers, 14 continuous days, unless the account
+predates Nov 2023) is the long pole and is the owner's to start. The live
+Supabase end-to-end from V8c is still unrun and still optional.
+
+*Not a gap: the Supabase keepalive.* `.github/` is not gitignored, the workflow
+is on `origin/main` (`fb64cdb`) and it has run on schedule and succeeded every
+time. The project is not going to pause.
 
 **V7 — per-store lists (built 2026-08-25, repaired 2026-08-26).** One list per
 store; `item.listStore` holds the name. A list is a name, not a record — the
