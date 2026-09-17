@@ -12,6 +12,14 @@
 const PATCH_NOTES = [
   {
     date: '2026-09-17',
+    version: 60,
+    notes: [
+      'You can now start a household without an email address — tap Start a household in Settings. Previously only someone with an invite code could get in, which meant nobody could be first.',
+      'If you signed in without an email, Settings now offers to add one, so a cleared browser or a new phone does not lock you out.'
+    ]
+  },
+  {
+    date: '2026-09-17',
     version: 59,
     notes: [
       'A new install now starts with a list called Groceries instead of Hannaford, and a short card explaining how the list and inventory work together.',

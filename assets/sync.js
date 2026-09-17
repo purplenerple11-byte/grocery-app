@@ -104,7 +104,8 @@ const Sync = {
       email: Sync.email,
       householdId: Sync.householdId,
       lastSyncAt: Sync.lastSyncAt,
-      error: Sync.lastError
+      error: Sync.lastError,
+      anonymous: Sync.isAnonymous
     };
   },
 
@@ -204,6 +205,67 @@ const Sync = {
 
   async startHousehold() {
     return Sync._rpcToHousehold('ensure_household');
+  },
+
+  /* The first person in a household had no way in.
+
+     "Join with code" needs a code from someone already inside, and the only
+     route to startHousehold ran through the `choosing` state, which you can
+     only reach by email — two magic links an hour on the free tier. So the one
+     person who has to go first was the one person sign-in could not serve.
+
+     The engine was already here. signInAnonymously and ensure_household both
+     existed and neither assumed an email; only the button was missing.
+
+     Deliberately does NOT stamp sync.seededHouseholdId the way joinWithCode
+     does. Joining means someone else's data is already the truth and this
+     device must ask before pushing anything. Starting means this device's list
+     IS the household's list, so seedFromLocal should run — which is exactly
+     the case seedFromLocal describes. */
+  async startHouseholdAnonymously() {
+    const hadSession = !!Sync.session;
+    if (!hadSession) {
+      Sync._set('syncing');
+      const { data, error } = await Sync.client.auth.signInAnonymously();
+      if (error) {
+        Sync._fail(error);
+        throw new Error(error.message === 'Anonymous sign-ins are disabled'
+          ? 'Starting a household without email is not enabled on the server yet.'
+          : error.message);
+      }
+      Sync.session = data.session;
+    }
+    try {
+      return await Sync.startHousehold();
+    } catch (e) {
+      // Same reason joinWithCode unwinds: a fresh anonymous session with no
+      // household sits in `choosing` forever with nothing that can rescue it.
+      if (!hadSession) await Sync.signOut().catch(() => {});
+      throw e;
+    }
+  },
+
+  /* Give an anonymous identity a way back.
+
+     An anonymous user is a real user with a real id, but it lives in one
+     browser's storage. Clear site data or switch phones and it is gone —
+     nothing in the household is lost, but this person's way into it is, unless
+     another device is still inside and can issue an invite. A single-device
+     household has no such device, which makes this the one recovery path.
+
+     updateUser converts the anonymous user into a permanent one. It sends a
+     confirmation link and nothing changes until that link is clicked, so the
+     UI must not claim the account is safe yet. The send comes out of the same
+     two-an-hour budget, which is why this is an action someone chooses rather
+     than something forced at sign-up. */
+  async attachEmail(email) {
+    const clean = String(email || '').trim();
+    if (!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(clean)) {
+      throw new Error('That does not look like an email address.');
+    }
+    const { error } = await Sync.client.auth.updateUser({ email: clean });
+    if (error) throw error;
+    return clean;
   },
 
   async redeemInvite(code) {

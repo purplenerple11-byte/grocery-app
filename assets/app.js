@@ -2010,6 +2010,7 @@ function renderSyncPanel(s) {
   // because the client finished loading is exactly the papercut being fixed.
   const typedEmail = (document.getElementById('sync-email') || {}).value || '';
   const typedCode = (document.getElementById('sync-code') || {}).value || '';
+  const typedAttach = (document.getElementById('sync-attach-email') || {}).value || '';
 
   if (st.status === 'off' || st.status === 'signed-out') {
     /* Code first: joining a household is the common case (one person starts
@@ -2022,11 +2023,14 @@ function renderSyncPanel(s) {
              autocorrect="off" spellcheck="false" enterkeyhint="go" inputmode="text"
              value="${escapeHtml(typedCode)}">
       <button id="sync-join-code-btn" class="btn-clay">Join with code</button>
+      <button id="sync-start-anon-btn">Start a household</button>
+      <p class="dialog-note">Join if someone sent you a code. Start one if you are
+        the first — neither needs an email.</p>
       <details id="sync-email-more">
         <summary>Sign in with email instead</summary>
         <input type="email" id="sync-email" placeholder="you@example.com" autocomplete="email" value="${escapeHtml(typedEmail)}">
         <button id="sync-email-btn">Send sign-in link</button>
-        <button id="sync-google-btn">Continue with Google</button>
+        ${SYNC_CONFIG.googleEnabled ? '<button id="sync-google-btn">Continue with Google</button>' : ''}
       </details>
       <p class="sync-error" id="sync-error" hidden></p>`;
     return;
@@ -2066,6 +2070,14 @@ function renderSyncPanel(s) {
     ${st.status === 'error' ? '<button id="sync-retry-btn">Retry</button>' : ''}
     <button id="sync-invite-btn">Invite someone</button>
     <p class="dialog-note" id="sync-invite-out" hidden></p>
+    ${st.anonymous ? `
+      <p class="dialog-note">You signed in without an email, so this household is
+        tied to this browser. Clearing your data or moving to a new phone would
+        need a fresh invite code from someone still in it.</p>
+      <input type="email" id="sync-attach-email" placeholder="you@example.com"
+             autocomplete="email" value="${escapeHtml(typedAttach)}">
+      <button id="sync-attach-btn">Add an email</button>
+      <p class="dialog-note" id="sync-attach-out" hidden></p>` : ''}
     <button id="sync-signout-btn">Sign out</button>
     <p class="sync-error" id="sync-error" hidden></p>
     <p class="dialog-note" id="sync-diag" hidden></p>
@@ -2158,7 +2170,8 @@ function unbusy() {
    for a button means dismissing the keyboard first. Enter submits instead. */
 document.getElementById('settings-dialog').addEventListener('keydown', (e) => {
   if (e.key !== 'Enter') return;
-  const submit = { 'sync-code': 'sync-join-code-btn', 'sync-email': 'sync-email-btn' }[e.target.id];
+  const submit = { 'sync-code': 'sync-join-code-btn', 'sync-email': 'sync-email-btn',
+                   'sync-attach-email': 'sync-attach-btn' }[e.target.id];
   if (!submit) return;
   e.preventDefault();
   const btn = document.getElementById(submit);
@@ -2207,6 +2220,13 @@ document.getElementById('settings-dialog').addEventListener('click', async (e) =
     } else if (id === 'sync-start-btn') {
       await Sync.startHousehold();
       scheduleSync(0);   // this device's data becomes the household's seed
+    } else if (id === 'sync-start-anon-btn') {
+      busy(e.target, 'Starting…');
+      await ensureSync();
+      await Sync.startHouseholdAnonymously();
+      /* Seeds, unlike the join path. Starting a household means this device's
+         list is the one everybody else will be joining. */
+      scheduleSync(0);
     } else if (id === 'sync-join-btn') {
       document.getElementById('sync-join-row').hidden = false;
     } else if (id === 'sync-join-code-btn' || id === 'sync-redeem-btn') {
@@ -2232,6 +2252,18 @@ document.getElementById('settings-dialog').addEventListener('click', async (e) =
       const out = document.getElementById('sync-invite-out');
       out.hidden = false;
       out.textContent = `Code: ${code} — single use, expires in 24 hours.`;
+    } else if (id === 'sync-attach-btn') {
+      // Read before anything awaits, for the same reason the other two fields
+      // are: an auth-state change re-renders this panel and swaps the input.
+      const email = document.getElementById('sync-attach-email').value;
+      busy(e.target, 'Sending…');
+      const clean = await Sync.attachEmail(email);
+      const out = document.getElementById('sync-attach-out');
+      out.hidden = false;
+      /* Deliberately not "your account is now safe". Nothing has changed until
+         the link is opened, and saying otherwise invites exactly the data loss
+         this whole action exists to prevent. */
+      out.textContent = `Check ${clean} for a confirmation link. The account is linked once you open it.`;
     } else if (id === 'sync-signout-btn') {
       await Sync.signOut();
     } else if (id === 'sync-report-btn') {
