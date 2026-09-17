@@ -21,8 +21,39 @@ const CATEGORY_ORDER = [
   'Drinks', 'Household', 'Other'
 ];
 
+/* Two names because a fresh install and the owner's device need different
+   answers. MIGRATED_LIST is the pre-roster list this app was built around, and
+   the one-time migration must keep saying it. DEFAULT_LIST is what a stranger
+   gets: seeding someone else's supermarket into a brand-new install is a guess
+   wearing the costume of a setting, and the first screen is a bad place to
+   start guessing. Renaming a list already works, so this costs one tap to fix
+   and nothing to ignore. */
+const MIGRATED_LIST = 'Hannaford';
+const DEFAULT_LIST = 'Groceries';
+
 const Store = {
   CATEGORY_ORDER,
+  MIGRATED_LIST,
+  DEFAULT_LIST,
+
+  /* Everything a never-migrated install decides about itself, in one place so
+     it can be tested without a browser.
+
+     An install holding no items has never been used by anyone. That is the
+     only signal available at this point for telling a stranger's fresh install
+     apart from the owner's device, which arrives here mid-migration and full.
+     Both settings say the same thing from two directions: an install with
+     history keeps the owner's header link and does not need the how-it-works
+     card; an empty one gets neither the link nor the assumption. */
+  firstBootDefaults(items) {
+    const fresh = items.length === 0;
+    return {
+      fresh,
+      roster: [fresh ? DEFAULT_LIST : MIGRATED_LIST],
+      recipesLink: !fresh,
+      firstRunSeen: !fresh
+    };
+  },
 
   /* Groups items by category (in CATEGORY_ORDER, unknown categories last and
      alphabetical), then sorts within each category block. `secondary(item)`

@@ -11,6 +11,15 @@
    an entry that says nothing teaches people to stop reading these. */
 const PATCH_NOTES = [
   {
+    date: '2026-09-17',
+    version: 59,
+    notes: [
+      'A new install now starts with a list called Groceries instead of Hannaford, and a short card explaining how the list and inventory work together.',
+      'The Recipes button can be turned off in Settings.',
+      'The version shown here is the one you are actually running. It had been wrong by eight releases.'
+    ]
+  },
+  {
     date: '2026-08-15',
     version: 50,
     notes: [

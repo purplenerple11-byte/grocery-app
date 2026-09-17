@@ -1,5 +1,6 @@
 /* UI layer. All data changes go through Store pure functions, then commit()/removeItems() persist. */
-const state = { items: [], meals: [], displayName: '', notesLastSeen: null, roster: [], currentList: '' };
+const state = { items: [], meals: [], displayName: '', notesLastSeen: null, roster: [], currentList: '',
+                recipesLink: true, firstRunSeen: false };
 
 /* ── Lists ───────────────────────────────────────────────────────────────
    The roster is the ordered set of list names. It is persisted separately
@@ -7,6 +8,8 @@ const state = { items: [], meals: [], displayName: '', notesLastSeen: null, rost
    it — a non-empty list is derivable from the items themselves. */
 const ROSTER_KEY = 'lists.roster';
 const CURRENT_KEY = 'lists.current';
+const RECIPES_KEY = 'ui.recipesLink';
+const FIRST_RUN_KEY = 'ui.firstRunSeen';
 
 async function saveRoster() {
   state.roster = Store.listRoster(state.items, state.roster);
@@ -234,10 +237,35 @@ function renderList() {
           <button class="step-btn" data-action="qty-plus" aria-label="More">＋</button>
         </span>
       </div>`).join('')}`).join('')
-    || `<div class="empty">Nothing on the list
-          <span class="empty-hint">Add an item above, or open Inventory and tap what you're out of.</span>
-        </div>`;
+    || emptyListHtml();
   scheduleAttributionFadeouts();
+}
+
+/* What an empty #list says. Two different emptinesses share this slot: a
+   brand-new install that has never held anything, and the far more common
+   "you finished shopping and the list cleared".
+
+   The first-run gate is therefore state.items.length — the whole table — and
+   NOT the rendered list being empty. Gating on the rendered list would show a
+   how-it-works card after every completed trip, which is the opposite of the
+   point. Once the first item exists the card is gone whether or not anyone
+   ever pressed Got it, so dismissal only matters to someone who reads it and
+   wants it out of the way before adding anything. */
+function emptyListHtml() {
+  if (state.items.length === 0 && !state.firstRunSeen) {
+    return `<div class="first-run">
+        <h2>How this works</h2>
+        <ol>
+          <li>Add what you need</li>
+          <li>Check items off as you shop</li>
+          <li>Tap <strong>Complete trip</strong> — anything you track restocks your inventory</li>
+        </ol>
+        <button type="button" id="first-run-dismiss">Got it</button>
+      </div>`;
+  }
+  return `<div class="empty">Nothing on the list
+        <span class="empty-hint">Add an item above, or open Inventory and tap what you're out of.</span>
+      </div>`;
 }
 
 function renderSheet() {
@@ -1681,6 +1709,7 @@ document.getElementById('lists-manage').addEventListener('click', async (e) => {
 document.getElementById('settings-btn').addEventListener('click', () => {
   const nameInput = document.getElementById('display-name-input');
   if (nameInput) nameInput.value = state.displayName || '';
+  applyRecipesLink();
   renderListsManage();
   openModal(document.getElementById('settings-dialog'));
 });
@@ -1692,6 +1721,39 @@ if (displayNameInput) {
     await DB.putSetting('displayName', state.displayName);
   });
 }
+
+/* The Recipes link points at a personal site on another origin. There is no
+   way to ask whether that app is installed — getInstalledRelatedApps() only
+   reports apps this manifest declares as related, and that one is not ours —
+   so this is a stored preference rather than detection. */
+function applyRecipesLink() {
+  const link = document.getElementById('recipes-link');
+  if (link) link.hidden = !state.recipesLink;
+  const box = document.getElementById('recipes-toggle');
+  if (box) box.checked = !!state.recipesLink;
+}
+
+const recipesToggle = document.getElementById('recipes-toggle');
+if (recipesToggle) {
+  recipesToggle.addEventListener('change', async (e) => {
+    state.recipesLink = e.target.checked;
+    await DB.putSetting(RECIPES_KEY, state.recipesLink);
+    applyRecipesLink();
+  });
+}
+
+/* Delegated, because the card lives inside innerHTML that render() replaces. */
+document.addEventListener('click', async (e) => {
+  if (!e.target.closest('#first-run-dismiss')) return;
+  state.firstRunSeen = true;
+  await DB.putSetting(FIRST_RUN_KEY, true);
+  render();
+});
+
+/* Rendered, not typed into the markup, so About cannot drift from the cache
+   version again. See assets/version.js. */
+const versionEl = document.getElementById('app-version');
+if (versionEl) versionEl.textContent = 'v' + APP_VERSION;
 
 document.getElementById('settings-close').addEventListener('click', () => {
   document.getElementById('settings-dialog').close();
@@ -2228,21 +2290,37 @@ async function boot() {
      off-list item picks up a list when it is next added. */
   let roster = await DB.getSetting(ROSTER_KEY, null);
   if (roster === null) {
+    const defaults = Store.firstBootDefaults(state.items);
     const onList = state.items.filter((it) => it.onList && !it.listStore);
     if (onList.length) {
       const stamped = new Set(onList.map((it) => it.id));
       await commitAll(
         state.items.map((it) => stamped.has(it.id)
-          ? Store.update(it, { listStore: 'Hannaford' })
+          ? Store.update(it, { listStore: Store.MIGRATED_LIST })
           : it),
         null
       );
     }
-    roster = ['Hannaford'];
+    roster = defaults.roster;
     await DB.putSetting(ROSTER_KEY, roster);
+
+    /* Two things the owner keeps and a stranger does not: the header link to a
+       personal recipes site, and a how-it-works card they plainly do not need.
+       Stamping the card as seen here is the same move notesLastSeen makes
+       above — it means clearing out the inventory years from now cannot
+       resurrect a first-run card on a device that is not on its first run. */
+    await DB.putSetting(RECIPES_KEY, defaults.recipesLink);
+    if (defaults.firstRunSeen) await DB.putSetting(FIRST_RUN_KEY, true);
   }
   state.roster = Store.listRoster(state.items, roster);
-  if (!state.roster.length) state.roster = ['Hannaford'];
+  if (!state.roster.length) state.roster = [Store.DEFAULT_LIST];
+
+  /* Read after the migration, so a first boot sees what it just wrote. The
+     fallbacks are for a device that migrated before these settings existed:
+     it is the owner's, so it keeps the link. */
+  state.recipesLink = await DB.getSetting(RECIPES_KEY, true);
+  state.firstRunSeen = await DB.getSetting(FIRST_RUN_KEY, false);
+  applyRecipesLink();
 
   // Same repair at boot, before the first render, so an orphan is never shown
   // as missing even briefly.

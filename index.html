@@ -170,6 +170,7 @@ if(d)document.documentElement.classList.add("dark")}catch(e){}})()</script>
     <div class="settings-field">
       <label for="display-name-input">Your name</label>
       <input type="text" id="display-name-input" placeholder="e.g. Alex" autocomplete="off">
+      <span class="setting-desc">Shown to the rest of your household as &ldquo;by Alex&rdquo; beside items you add.</span>
     </div>
     <h4 class="settings-head">Appearance</h4>
     <!-- The input stays the control (label, keyboard, checked state); .switch is
@@ -180,6 +181,14 @@ if(d)document.documentElement.classList.add("dark")}catch(e){}})()</script>
         <span class="setting-desc" id="theme-desc">Off — follows your system until you choose here.</span>
       </span>
       <input type="checkbox" id="theme-toggle" class="switch-input">
+      <span class="switch" aria-hidden="true"></span>
+    </label>
+    <label class="setting-card">
+      <span class="setting-text">
+        <span class="setting-title">Recipes link</span>
+        <span class="setting-desc">Puts a Recipes button in the header, opening Recipe Holder.</span>
+      </span>
+      <input type="checkbox" id="recipes-toggle" class="switch-input">
       <span class="switch" aria-hidden="true"></span>
     </label>
     <h4 class="settings-head">Lists</h4>
@@ -203,7 +212,7 @@ if(d)document.documentElement.classList.add("dark")}catch(e){}})()</script>
       </span>
       <span class="setting-chevron" aria-hidden="true">›</span>
     </button>
-    <p class="dialog-note" style="text-align:center; margin-top:12px; opacity:.5;">v51</p>
+    <p class="dialog-note" style="text-align:center; margin-top:12px; opacity:.5;" id="app-version">v—</p>
   </menu>
 </dialog>
 
@@ -215,6 +224,7 @@ if(d)document.documentElement.classList.add("dark")}catch(e){}})()</script>
   <div id="notes-body" class="notes-body"></div>
 </dialog>
 
+<script src="assets/version.js"></script>
 <script src="assets/store.js"></script>
 <script src="assets/patch-notes.js"></script>
 <script src="assets/sync-config.js"></script>

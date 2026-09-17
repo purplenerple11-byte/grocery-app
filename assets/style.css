@@ -199,6 +199,14 @@ button { font-family: var(--sans); cursor: pointer; }
 #sync-email-more summary { font-size: 13px; color: var(--muted); cursor: pointer; padding: 4px 0; }
 #sync-email-more[open] summary { margin-bottom: 6px; }
 #sync-code { font-family: var(--sans); letter-spacing: .14em; text-transform: uppercase; }
+/* Sync panel buttons are not inside a `dialog menu`, so the flex:1 in that
+   rule never reaches them and each one shrank to its own text — which is why
+   "Join with code" rendered narrow and left-aligned in a full-width panel.
+   Claim the width here. .btn-clay also needs re-rounding: its square top
+   corners are shaped for a dialog footer, and mid-panel they read as a button
+   that came unstuck from something. Same fix, same reason, as #new-list-create. */
+#sync-body button { width: 100%; }
+#sync-body .btn-clay { border-radius: 6px !important; }
 #sync-panel button[disabled] { opacity: .6; }
 /* .dialog-note carries a -6px top margin to tuck under a heading. This one sits
    under a row of buttons instead, where that pull collides with them — it is a
@@ -379,6 +387,26 @@ button { font-family: var(--sans); cursor: pointer; }
    an item the user named. */
 .empty { text-align: center; color: var(--muted); font-size: 14px; line-height: 1.5; padding: 40px 20px; }
 .empty .empty-hint { display: block; font-size: 12px; margin-top: 6px; }
+
+/* ── First-run card ───────────────────────────────────────────────────────
+   Shaped like .new-list-card on purpose: both are a card sitting in the list
+   lane saying "there is nothing here, here is what to do about it", and two
+   different shapes for that would read as two different apps. */
+.first-run {
+  background: var(--surface); border: 1px solid var(--hairline);
+  border-radius: 14px; padding: 22px 20px 18px; margin: 8px 0;
+}
+.first-run h2 { font-size: 18px; margin: 0 0 10px; }
+.first-run ol { margin: 0; padding-left: 20px; color: var(--ink); font-size: 14px; line-height: 1.55; }
+.first-run li { margin-bottom: 4px; }
+.first-run li strong { font-weight: 600; }
+/* Right-aligned and quiet: this dismisses an explanation, it does not do
+   anything to the list, so it must not compete with Complete trip. */
+#first-run-dismiss {
+  display: block; margin: 16px 0 0 auto; padding: 7px 14px;
+  border: 1px solid var(--hairline); background: var(--fill); color: var(--ink);
+  border-radius: 6px; font-size: 14px;
+}
 
 #banner {
   position: sticky; top: 0; z-index: 20;
