@@ -423,6 +423,16 @@ python3 -m http.server 8000        # from repo root; service worker needs http
    `caches.delete` every key, *then* navigate again — clearing without the
    reload proves nothing, and the reload without the clear re-registers it.
 
+20. **A hidden Browser pane does not run CSS transitions.** Polling
+   `getComputedStyle` through the list-switch animation showed it frozen
+   mid-flight with the name at `opacity: 0` — a convincing "the in-phase
+   never fires" bug that does not exist. The pane had been hidden, so the
+   tab was not rendering; the same run passed six times once a screenshot
+   had fronted it. This is the same class of hazard the `void offsetHeight`
+   comment in `switchList` is about. Before believing an animation bug found
+   by polling, take a screenshot first — it makes the pane visible — or
+   prove the inline styles with a MutationObserver, which is what settled it.
+
 ## Status
 
 **V8a — first run for a stranger (built 2026-09-17, shipped v59).** A walkthrough
@@ -539,6 +549,15 @@ platform's blue OK/Cancel. On an installed PWA that is worse than mismatched:
 the URL is the one thing the app has otherwise stopped showing you. One shared
 `#ask-dialog` replaces all four. `ask()` returns a Promise — pass `value` and
 the answer is a string or null, omit it and it is true/false.
+
+*Two things reported from the phone (v64).* The Category dropdown showed the
+List field through its options — not transparency: `dialog .field` gives every
+field the same `z-index`, so stacking fell to DOM order and the later sibling
+won. Whichever picker is open now takes a higher one. And the header relabelled
+itself with a hard cut while every row around it moved; the name and count now
+travel with the gesture on the same durations and mirrored easings as the rows.
+`.appbar h1 em` needed `display: inline-block` — transforms do not apply to
+inline boxes.
 
 **Next step:** the Play Store readiness list is the open work — privacy policy
 page, in-app account deletion, Data Safety answers, listing assets. The
