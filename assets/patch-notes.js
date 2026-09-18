@@ -11,6 +11,14 @@
    an entry that says nothing teaches people to stop reading these. */
 const PATCH_NOTES = [
   {
+    date: '2026-09-18',
+    version: 64,
+    notes: [
+      'The list name and count now slide with the swipe instead of cutting to the new one.',
+      'Fixed the Category and List dropdowns showing the field behind them through the options.'
+    ]
+  },
+  {
     date: '2026-09-17',
     version: 63,
     notes: [

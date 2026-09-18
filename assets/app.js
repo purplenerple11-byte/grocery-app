@@ -1051,6 +1051,15 @@ function onLongPress(container, selector, handler) {
   const SQUASH = 'scale(0.55, 0.04)';
   const STAGGER_CAP = 180;
 
+  /* The block relabels itself mid-inhale, and the label used to hard-cut
+     while every row around it moved — the one still frame in the animation.
+     The name and the count now travel the way the swipe did: out the way the
+     finger went, in from the other side. Small on purpose; this is the label
+     following the gesture, not a second animation competing with the rows. */
+  const NAME_SHIFT = 14;
+  const titleParts = () =>
+    [document.getElementById('list-store'), document.getElementById('list-sub')].filter(Boolean);
+
   const reduced = () => matchMedia('(prefers-reduced-motion: reduce)').matches;
   /* .new-list-card and .empty are in here too: they are what the list area
      shows when it has no rows, and leaving them out meant those lanes popped
@@ -1096,6 +1105,13 @@ function onLongPress(container, selector, handler) {
       el.style.opacity = '0';
     });
 
+    titleParts().forEach((el) => {
+      el.style.transition =
+        `transform ${OUT_MS}ms ${OUT_EASE}, opacity ${Math.round(OUT_MS * 0.6)}ms linear`;
+      el.style.transform = `translateX(${-dir * NAME_SHIFT}px)`;
+      el.style.opacity = '0';
+    });
+
     setTimeout(() => {
       state.currentList = next;
       DB.putSetting(CURRENT_KEY, next).catch(() => {});
@@ -1120,7 +1136,20 @@ function onLongPress(container, selector, handler) {
          already sitting at opacity 0 by this point, so an rAF that never
          fires leaves the list permanently invisible rather than merely
          un-animated. offsetHeight cannot fail that way. */
+      titleParts().forEach((el) => {
+        el.style.transition = 'none';
+        el.style.transform = `translateX(${dir * NAME_SHIFT}px)`;
+        el.style.opacity = '0';
+      });
+
       void listEl.offsetHeight;
+
+      titleParts().forEach((el) => {
+        el.style.transition =
+          `transform ${IN_MS}ms ${IN_EASE}, opacity ${Math.round(IN_MS * 0.6)}ms linear`;
+        el.style.transform = '';
+        el.style.opacity = '1';
+      });
 
       inn.forEach((el, i) => {
         el.style.transition =
@@ -1132,6 +1161,7 @@ function onLongPress(container, selector, handler) {
 
       setTimeout(() => {
         inn.forEach((el) => { el.style.transition = ''; el.style.transform = ''; el.style.opacity = ''; });
+        titleParts().forEach((el) => { el.style.transition = ''; el.style.transform = ''; el.style.opacity = ''; });
         animating = false;
       }, IN_MS + (m - 1) * inStep + 40);
     }, OUT_MS + (n - 1) * outStep);
@@ -1287,6 +1317,10 @@ function setCategory(value) {
 function openCategoryList(open) {
   categoryList.hidden = !open;
   categoryBtn.setAttribute('aria-expanded', String(open));
+  /* Both .field wrappers carry the same z-index, so the LATER one in the DOM
+     won and the List field painted straight through the open Category popup.
+     Lift whichever field is open above its siblings. */
+  categoryBtn.closest('.field').classList.toggle('picker-open', open);
   if (!open) return;
   /* Open on the current selection rather than at the top — with 14+ categories
      the checked row is usually out of view otherwise. */
@@ -1358,6 +1392,7 @@ function setListChoice(value) {
 function openListPicker(open) {
   listPicker.hidden = !open;
   listBtn.setAttribute('aria-expanded', String(open));
+  listBtn.closest('.field').classList.toggle('picker-open', open);
   if (!open) return;
   const checked = listPicker.querySelector('input:checked');
   if (!checked) return;
