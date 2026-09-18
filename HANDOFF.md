@@ -465,6 +465,26 @@ python3 -m http.server 8000        # from repo root; service worker needs http
     is a Pages Function at `functions/.well-known/assetlinks.json.js` — no npm,
     no build step, so it stays inside the no-toolchain rule.
 
+22. **Cloudflare Pages strips `.html` and 308s to the extensionless path, and
+    the precache survives it — verified, not assumed.** `/privacy.html` returns
+    `308 -> /privacy`. That looked like a real hazard: `addAll` rejects
+    atomically, so one uncacheable response takes the whole service worker
+    down, silently. It does not happen. A `Request` built from a URL string
+    defaults to `redirect: 'follow'`, so `cache.put` accepts the result. On the
+    live v65 deploy the cache holds 19 entries, keyed under the *requested*
+    `/privacy.html`, with `redirected: true`, status 200 and the real 6578-byte
+    body.
+
+    The second half is the surprising one. Chrome refuses a **navigation**
+    served by a worker from a redirected response — and the fetch handler here
+    is `return cached || networkFetch`, so tapping Privacy in the installed app
+    is exactly that case. It works anyway: the page renders, console clean.
+    Both halves were checked against the live site rather than reasoned about,
+    which is the only way to check either — locally `python3 -m http.server`
+    serves `/privacy.html` with no redirect at all, so the situation cannot be
+    reproduced on 8777. If a future Pages change breaks this, the symptom is
+    the whole worker failing to install, not a broken link.
+
 ## Status
 
 **V8a — first run for a stranger (built 2026-09-17, shipped v59).** A walkthrough
@@ -591,15 +611,63 @@ travel with the gesture on the same durations and mirrored easings as the rows.
 `.appbar h1 em` needed `display: inline-block` — transforms do not apply to
 inline boxes.
 
-**Next step:** the Play Store readiness list is the open work — privacy policy
-page, in-app account deletion, Data Safety answers, listing assets. The
-developer-account clock (12 testers, 14 continuous days, unless the account
-predates Nov 2023) is the long pole and is the owner's to start. The live
-Supabase end-to-end from V8c is still unrun and still optional.
+**V9a — the two files a store requires (shipped v65).** Spec:
+`docs/superpowers/specs/2026-09-18-play-and-apk-readiness-design.md`.
+
+*`privacy.html`.* Play requires a policy URL for every app, free and personal
+ones included, and the Data Safety form has to agree with it. It is standalone
+and deliberately does **not** load `assets/style.css` — that file is app chrome
+and none of it applies to a document. It copies the tokens and follows
+`prefers-color-scheme`, because the app's `.dark` class lives in IndexedDB and
+a static page should not open a database to pick a colour. Its `#delete`
+section doubles as Play's required *web* deletion-request URL, so one page
+satisfies two separate requirements. Linked from About as an `a.setting-card`,
+matching the What's new row.
+
+*`.well-known/assetlinks.json`.* Without it the installed APK opens with a
+Chrome URL bar across the top. Package name is `dev.pigote.grocery` and is
+permanent — Play does not allow a change after the first upload.
+
+⚠ **It ships with an EMPTY `sha256_cert_fingerprints` array.** JSON takes no
+comments, so this is the record. Empty verifies nothing, which is harmless, and
+it buys the only thing worth having early: proof that Cloudflare serves a real
+file at that path rather than falling through to `index.html` (gotcha #21 — a
+missing file and a present one both answer 200). Two fingerprints go in later,
+on the same target: the local key that signs the sideloaded APK, and the
+certificate Play App Signing holds for the store build. They are different
+keys, so both entries are required or one of the two builds shows the URL bar.
+
+`privacy.html` is precached. `assetlinks.json` is not, on purpose: Android
+fetches it at install time, outside the page and outside the worker.
+
+*Struck before it was written: the pending-email banner.* The spec listed it as
+commit C. It had already shipped in v62 — see V8d — and matched the design, so
+it was removed from the plan rather than rebuilt.
+
+**Next step:** commit B — in-app account deletion. Play requires an app with
+accounts to offer deletion in-app *and* at a web URL; the web half shipped with
+`privacy.html#delete`, the in-app half does not exist. It needs a
+`delete_my_account()` SECURITY DEFINER RPC that drops the membership, drops the
+household only if no members remain, then deletes the `auth.users` row — plus a
+typed-confirmation button that also clears local IndexedDB. The case worth
+testing: leaving a household that still has other members must not take their
+data with it.
+
+After that, commit D — listing assets and `docs/play-data-safety.md`.
+
+*The owner's, not the code's:* developer account and ID verification, the
+12-testers-for-14-continuous-days closed test (unless the account predates
+Nov 2023), content rating questionnaire, the two signing fingerprints, and the
+upload. The account clock is the long pole and runs in parallel with all of the
+above. The live Supabase end-to-end from V8c is still unrun and still optional.
 
 *Not a gap: the Supabase keepalive.* `.github/` is not gitignored, the workflow
 is on `origin/main` (`fb64cdb`) and it has run on schedule and succeeded every
 time. The project is not going to pause.
+
+*Not a gap: target API 36.* PWABuilder builds in the cloud, so the machine's
+SDK level is irrelevant, and `targetSdk` reads as plain text out of the
+generated project's `build.gradle`. Verification, not work.
 
 **V7 — per-store lists (built 2026-08-25, repaired 2026-08-26).** One list per
 store; `item.listStore` holds the name. A list is a name, not a record — the
