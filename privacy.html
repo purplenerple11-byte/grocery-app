@@ -1,0 +1,144 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="theme-color" content="#C2410C">
+<title>Privacy &amp; your data — Grocery</title>
+<link rel="icon" href="icons/favicon-32.png" sizes="32x32">
+<!-- A standalone page, deliberately not sharing assets/style.css: that file is
+     600+ lines of app chrome (dialogs, sheets, swipe lanes) and none of it
+     applies here. The tokens below are copied from its :root and .dark blocks
+     so the page still reads as the same product.
+
+     Dark follows prefers-color-scheme rather than the app's .dark class. The
+     class is set by a setting stored in the app's IndexedDB, which this page
+     has no reason to open just to pick a colour. -->
+<style>
+  :root {
+    --canvas: #f5f5f4; --surface: #ffffff;
+    --ink: #1c1917; --muted: #78716c; --hairline: #e7e5e4;
+    --clay: #1c1917;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --canvas: #3d3d3d; --surface: #4a4a4a;
+      --ink: #f8f8f8; --muted: #b4b4b4; --hairline: #5c5c5c;
+      --clay: #d4d4d4;
+    }
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0; padding: 32px 16px 64px;
+    background: var(--canvas); color: var(--ink);
+    font: 16px/1.6 -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+    -webkit-text-size-adjust: 100%;
+  }
+  main { max-width: 42rem; margin: 0 auto; }
+  article {
+    background: var(--surface); border: 1px solid var(--hairline);
+    border-radius: 14px; padding: 24px 20px;
+  }
+  h1 { font-size: 26px; line-height: 1.25; margin: 0 0 4px; }
+  h2 {
+    font-size: 13px; font-weight: 600; color: var(--muted);
+    text-transform: uppercase; letter-spacing: .08em;
+    margin: 32px 0 8px;
+  }
+  h2:first-of-type { margin-top: 24px; }
+  p, ul { margin: 0 0 12px; }
+  ul { padding-left: 22px; }
+  li { margin-bottom: 4px; }
+  .updated { color: var(--muted); font-size: 14px; margin: 0 0 8px; }
+  .lede { font-size: 17px; }
+  a { color: var(--ink); text-underline-offset: 3px; }
+  @media (prefers-color-scheme: dark) { a { color: var(--ink); } }
+  .back {
+    display: inline-block; margin-bottom: 20px;
+    color: var(--muted); font-size: 14px; text-decoration: none;
+  }
+  .back:hover { text-decoration: underline; }
+  footer { color: var(--muted); font-size: 13px; margin-top: 24px; text-align: center; }
+</style>
+</head>
+<body>
+<main>
+  <a class="back" href="./">&lsaquo; Back to Grocery</a>
+  <article>
+    <h1>Privacy &amp; your data</h1>
+    <p class="updated">Last updated 18 September 2026</p>
+
+    <p class="lede">Grocery has no analytics, no advertising, no third-party
+      trackers and no telemetry. Nothing you do in the app is measured or sold.
+      If you never sign in, nothing ever leaves your phone.</p>
+
+    <h2>What stays on your device</h2>
+    <p>Everything, by default. Your items, quantities, categories, stock
+      levels, price history and meals are stored in your browser's own storage
+      on the device. A copy of the app that has never been signed in has no
+      account, sends no requests to us, and has nothing of yours anywhere else.</p>
+
+    <h2>What is sent, and only after you join a household</h2>
+    <p>Sharing a list with other people means the list has to leave your phone.
+      Once you start or join a household, this is synced to our database
+      provider, <a href="https://supabase.com/privacy">Supabase</a>, and is
+      readable by the other members of that household:</p>
+    <ul>
+      <li>Each item: its name, category, unit, whether you track it, its stock
+        level and low-at threshold, whether it is on the list, the quantity,
+        whether it is checked off, which list or store it belongs to, and its
+        price history</li>
+      <li>Meals: the name and which items are in them</li>
+      <li>The household itself, who belongs to it, and any invite codes you
+        create</li>
+      <li>The name you type in Settings, attached to items you add. This is how
+        other members see who added what. If you leave it blank, items arrive
+        without a name.</li>
+    </ul>
+    <p>Anyone in your household can see all of it. Only invite people you mean
+      to share a grocery list with.</p>
+
+    <h2>Your account</h2>
+    <p>If you sign in by email, Supabase stores that address so it can send you
+      a sign-in link and recognise you next time. If you started a household
+      without an email, you have an anonymous account: a random identifier and
+      nothing else. There is no password, no profile and no name attached to
+      the account itself.</p>
+    <p>We do not use your email for anything but signing you in. There is no
+      mailing list.</p>
+
+    <h2 id="delete">Deleting your account and your data</h2>
+    <p>You can delete your account from inside the app: <strong>Settings &rarr;
+      Sync &rarr; Delete account</strong>. It removes your account, your
+      membership of any household, and everything stored on this device.</p>
+    <p>If a household still has other members after you leave, their copy of
+      the shared list stays — it is theirs too. If you were the last member,
+      the household and everything in it is deleted with you.</p>
+    <p>If you cannot reach the in-app button — the app is uninstalled, or the
+      device is gone — email
+      <a href="mailto:purplenerple11@gmail.com?subject=Grocery%20account%20deletion%20request">purplenerple11@gmail.com</a>
+      with the address you signed in with, and the account will be deleted.</p>
+
+    <h2>How long data is kept</h2>
+    <p>Household data is kept for as long as the household exists. Deleting
+      your account removes your account immediately, along with any household
+      that has no members left. Data on your device is gone as soon as you
+      delete the account or uninstall the app.</p>
+
+    <h2>Children</h2>
+    <p>Grocery is not directed at children and does not knowingly collect
+      anything from them. It has no social features, no messaging and no
+      way to reach anyone outside a household you were invited to.</p>
+
+    <h2>Changes to this page</h2>
+    <p>If what the app collects changes, this page changes with it, and the
+      date at the top moves. It lives in the same repository as the app, so its
+      history is public.</p>
+
+    <h2>Contact</h2>
+    <p><a href="mailto:purplenerple11@gmail.com?subject=Grocery%20privacy">purplenerple11@gmail.com</a></p>
+  </article>
+  <footer>Grocery &mdash; a grocery list that remembers what you keep at home.</footer>
+</main>
+</body>
+</html>

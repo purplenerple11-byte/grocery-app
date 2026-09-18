@@ -1,6 +1,12 @@
-const CACHE = 'grocery-v64';
+const CACHE = 'grocery-v65';
 const ASSETS = [
   './', './index.html', './manifest.json',
+  // A standalone page, so it needs its own entry — the app shell does not
+  // pull it in. Precached because Play requires the policy to be reachable
+  // and an installed app that is offline is still an installed app.
+  // NOTE: .well-known/assetlinks.json is deliberately NOT here. Android
+  // fetches it at install time, outside the page and outside this worker.
+  './privacy.html',
   './assets/style.css', './assets/version.js', './assets/store.js', './assets/app.js',
   // Self-hosted so the serif survives offline. A missing font here would not
   // fail loudly — it would silently fall back to Georgia on the device only.

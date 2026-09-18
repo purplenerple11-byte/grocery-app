@@ -12,6 +12,13 @@
 const PATCH_NOTES = [
   {
     date: '2026-09-18',
+    version: 65,
+    notes: [
+      'Settings now has a Privacy page: what stays on your phone, what the rest of your household can see, and how to delete the lot.'
+    ]
+  },
+  {
+    date: '2026-09-18',
     version: 64,
     notes: [
       'The list name and count now slide with the swipe instead of cutting to the new one.',

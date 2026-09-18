@@ -181,6 +181,20 @@ assets/style.css           every style; design tokens at :root
 assets/store.js            Store = pure state fns + DB = IndexedDB adapter. No DOM.
 assets/app.js              all UI: rendering, event delegation, dialogs
 assets/version.js          APP_VERSION — the single source for the About row
+privacy.html               standalone privacy policy; Play requires the URL and
+                           the Data Safety form must agree with it. Its #delete
+                           section is also Play's required web deletion-request
+                           URL. Deliberately does NOT use assets/style.css.
+.well-known/assetlinks.json  Digital Asset Links. Without it the installed APK
+                           opens with a Chrome URL bar. ⚠ its
+                           `sha256_cert_fingerprints` is an EMPTY ARRAY — JSON
+                           takes no comments, so it is recorded here instead.
+                           It ships empty on purpose, to prove Cloudflare
+                           serves the path at all (see gotcha #18). It verifies
+                           nothing until both fingerprints go in: the local key
+                           for the sideloaded APK, and Play App Signing's
+                           certificate for the store build. Two entries, one
+                           target — they are signed differently.
 sw.js                      service worker; bump `const CACHE` when assets change
 tools/make_icons.py        regenerates icons/ (stdlib only, no Pillow)
 tools/check-version.sh     fails if sw.js, version.js and patch-notes disagree
@@ -432,6 +446,24 @@ python3 -m http.server 8000        # from repo root; service worker needs http
    comment in `switchList` is about. Before believing an animation bug found
    by polling, take a screenshot first — it makes the pane visible — or
    prove the inline styles with a MutationObserver, which is what settled it.
+
+
+21. **Every unknown path on the live site returns index.html with a 200.**
+    Cloudflare Pages falls back to the app for anything it cannot match, so
+    "did that file deploy?" cannot be answered by a status code — a missing
+    file and a present one both say 200. Confirmed 2026-09-18:
+
+        /.well-known/assetlinks.json  ->  200, text/html, 13501 bytes
+        /nope-does-not-exist          ->  200, text/html, 13501 bytes
+
+    Check the content-type and the body, never just the code. This matters
+    most for `.well-known/assetlinks.json`, because a broken one does not
+    error: the APK simply installs with a Chrome URL bar across the top and
+    nothing anywhere says why. Cloudflare also excludes most dotfiles from
+    upload; `.well-known/` is meant to be the exception, which is exactly the
+    kind of "meant to be" worth a curl. If it ever does fall through, the fix
+    is a Pages Function at `functions/.well-known/assetlinks.json.js` — no npm,
+    no build step, so it stays inside the no-toolchain rule.
 
 ## Status
 

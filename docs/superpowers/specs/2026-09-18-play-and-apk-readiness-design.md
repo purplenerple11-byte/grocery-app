@@ -144,29 +144,25 @@ Tests go in `tests/store.test.js` against the fake, including the case that
 matters most: a user leaving a household that still has other members must not
 take their data with them.
 
-## C — Email confirmation banner
+## C — Email confirmation banner — ALREADY BUILT
 
-`Sync.attachEmail()` exists so an anonymous user can rescue their identity, and
-its current copy is already honest: *"The account is linked once you open it."*
-The problem is that it is a `.dialog-note` — small grey text that disappears
-the moment the dialog closes. The failure it guards against is someone typing
-their email, feeling safe, closing the dialog, and losing the account anyway.
+Struck from the plan on 2026-09-18, before any code was written for it. The
+work landed between v61 and v64 and matches this design closely enough that
+re-specifying it would have been duplication:
 
-`auth.users.email_change` exists on the live project, which means the JS client
-exposes `user.new_email` while a confirmation is outstanding. **A pending
-confirmation is server state, not something the app has to remember.** It
-survives reload, app restart and a move to another device.
+- `Store.pendingEmail(pending, now)` is the pure decision, with
+  `Store.EMAIL_RESEND_COOLDOWN_MS` and `Store.resendWaitLabel()`
+- `Sync.snapshotStatus()` exposes `newEmail` from `session.user.new_email`, so
+  server state drives the card and clears it when the link is opened
+- The local stamp under `sync.pendingEmail` supplies only the send time GoTrue
+  does not expose, and carries the whole magic-link case, which has no session
+  to ask
+- `pendingEmailHtml()` renders a "Check your email" card with a cooldown-aware
+  Resend, and offers "Use another address" only on the sign-in path — dismissing
+  the attach card would hide a confirmation still genuinely pending
+- Five tests in `tests/store.test.js`
 
-While `new_email` is set, the sync panel shows a standing card at the top —
-"Waiting on you: confirm *address*" — with a Resend button. It clears itself
-when the link is opened, because the underlying state does.
-
-Two wrinkles:
-
-- **Magic-link sign-in has no session**, so there is no `new_email` to read.
-  That path needs a local stamp rendering the same card, cleared on sign-in.
-- **Resend is rate limited to two an hour** on the free tier. The button shows
-  its cooldown, or tapping it simply throws an error at the user.
+Nothing left to do here.
 
 ## D — Listing assets
 
@@ -198,5 +194,5 @@ Four commits, landed on `main` in order, each deployed and verified:
 
 - **A** — assetlinks, privacy page, About links, SW precache, version bump
 - **B** — deletion RPC, in-app button, tests
-- **C** — pending-confirmation banner
+- **C** — pending-confirmation banner (already built; see above)
 - **D** — listing assets and the Data Safety answers

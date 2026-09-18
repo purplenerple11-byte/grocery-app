@@ -542,6 +542,10 @@ dialog input:not([type="checkbox"]), dialog select {
 /* A row that opens something rather than toggling it. Left-aligned like the
    cards above; the chevron is what says "there is more behind this". */
 button.setting-card { width: 100%; text-align: left; }
+/* A card that leaves the app rather than opening a dialog. `dialog a` inherits
+   the link colour and underline from the page, which on a card reads as a
+   mistake — the chevron is already saying "this goes somewhere". */
+a.setting-card { text-decoration: none; color: var(--ink); }
 .setting-chevron { flex: none; color: var(--muted); font-size: 18px; line-height: 1; }
 
 /* "Unread" marker. Deliberately --ink and not --clay: Clay-Is-Action reserves
