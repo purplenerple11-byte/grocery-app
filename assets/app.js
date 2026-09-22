@@ -497,13 +497,17 @@ document.getElementById('complete-trip').addEventListener('click', async () => {
       render();
       return;
     }
-    if (!state.items.some((it) => it.onList && it.checked)) {
+    if (!Store.tripItems(state.items, state.currentList).length) {
       showBanner('That trip was already completed on another device.');
       render();
       return;
     }
   }
-  const bought = state.items.filter((it) => it.onList && it.checked && it.tracked);
+  /* Scoped, like completeTrip. These two used to disagree: the dialog gathered
+     price rows from every checked item in the household while the completion
+     only restocked the current list, so a price typed against another list's
+     row was quietly thrown away and the item stayed checked where it was. */
+  const bought = Store.tripItems(state.items, state.currentList).filter((it) => it.tracked);
   document.getElementById('store-names').innerHTML =
     Store.storeNames(state.items).map((s) => `<option value="${escapeHtml(s)}">`).join('');
   const form = document.getElementById('trip-form');
@@ -2036,10 +2040,21 @@ async function ensureSync() {
   return true;
 }
 
+/* Is this device signed in? Answered from localStorage, so it costs nothing and
+   needs no client — which is what lets boot ask it before the sync library has
+   loaded, let alone pulled anything. */
+function hasStoredSession() {
+  try {
+    return Object.keys(localStorage).some((k) => k.startsWith(SYNC_CONFIG.storagePrefix));
+  } catch (e) {
+    return false;   // private mode: treat as signed out, the safer of the two
+  }
+}
+
 /* Only auto-loads when a session already exists — checking localStorage costs
    nothing and avoids the download for everyone else. */
 async function bootSync() {
-  const hasSession = Object.keys(localStorage).some((k) => k.startsWith(SYNC_CONFIG.storagePrefix));
+  const hasSession = hasStoredSession();
   const returningFromAuth = /[?#].*(code=|access_token=)/.test(location.href);
   if (!hasSession && !returningFromAuth) { renderSyncPanel(); return; }
   try {
@@ -2561,7 +2576,10 @@ async function boot() {
      off-list item picks up a list when it is next added. */
   let roster = await DB.getSetting(ROSTER_KEY, null);
   if (roster === null) {
-    const defaults = Store.firstBootDefaults(state.items);
+    /* Zero local items is not proof of a new install. A signed-in device whose
+       storage was cleared has zero of them here, because the first pull has not
+       happened yet — see firstBootDefaults. */
+    const defaults = Store.firstBootDefaults(state.items, hasStoredSession());
     const onList = state.items.filter((it) => it.onList && !it.listStore);
     if (onList.length) {
       const stamped = new Set(onList.map((it) => it.id));

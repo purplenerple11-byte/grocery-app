@@ -12,6 +12,14 @@
 const PATCH_NOTES = [
   {
     date: '2026-09-22',
+    version: 67,
+    notes: [
+      'Completing a trip no longer sweeps in items you had checked off on your other lists \u2014 the trip screen now shows only the list you are standing on.',
+      'Signing in on a new phone, or after clearing your data, no longer invents a Groceries list and reshuffles the order of the ones you already had.'
+    ]
+  },
+  {
+    date: '2026-09-22',
     version: 66,
     notes: [
       'Settings \u2192 Sync now has Delete account. It removes your account and erases this device; if anyone else is in your household, their list stays put.'

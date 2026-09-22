@@ -45,8 +45,23 @@ const Store = {
      Both settings say the same thing from two directions: an install with
      history keeps the owner's header link and does not need the how-it-works
      card; an empty one gets neither the link nor the assumption. */
-  firstBootDefaults(items) {
-    const fresh = items.length === 0;
+  /* `hasSession` is not optional in practice, only in signature.
+
+     The first version decided "fresh install" from the local item count alone.
+     That is right for a phone nobody has ever signed in on, and wrong for the
+     case that actually broke a household: a device that IS signed in and whose
+     local storage was cleared holds zero items at the moment this runs, because
+     the first pull has not landed yet. It got the stranger treatment — a
+     `Groceries` list invented and written as roster[0], the recipes link turned
+     off, a how-it-works card queued — and then the real lists arrived from sync
+     and `listRoster` appended them alphabetically BEHIND the invented one. A
+     roster of Hannaford, BJ's Club, Publix came back as Groceries, BJ's Club,
+     Hannaford, Healthy living, Publix.
+
+     A stored Supabase session is the signal that separates the two, and it is
+     readable synchronously before any network call. */
+  firstBootDefaults(items, hasSession = false) {
+    const fresh = items.length === 0 && !hasSession;
     return {
       fresh,
       roster: [fresh ? DEFAULT_LIST : MIGRATED_LIST],
@@ -388,6 +403,23 @@ const Store = {
       kept.push(next);
     }
     return kept;
+  },
+
+  /* Exactly what a trip on `listName` will touch — the same question
+     completeTrip answers internally, exposed so the UI cannot ask a different
+     one.
+
+     It could: the dialog used to gather its price rows from every checked item
+     in the household while completeTrip restocked only the current list. The
+     two disagreed silently, so a price typed against an out-of-list row went
+     nowhere and the item stayed checked on its own list. Anything deciding
+     what a trip covers must come through here.
+
+     The `!listName` fallback mirrors completeTrip's, so a device with no
+     current list at all still behaves identically in both. */
+  tripItems(items, listName = '') {
+    return (items || []).filter((it) =>
+      it && it.onList && it.checked && (!listName || it.listStore === listName));
   },
 
   outLowCounts(items) {

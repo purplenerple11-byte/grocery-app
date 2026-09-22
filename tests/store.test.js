@@ -1457,6 +1457,77 @@ test('resendWaitLabel rounds up so it never promises an early send', () => {
   assertEqual(Store.resendWaitLabel(29 * 60_000), '29 minutes');
 });
 
+// ---- trip scope (bug: the trip dialog ignored the current list) ----
+
+test('tripItems only ever offers the list you are standing on', () => {
+  const items = [
+    { id: 'a', name: 'Milk',    onList: true,  checked: true,  tracked: true,  listStore: 'Hannaford' },
+    { id: 'b', name: 'Icecream',onList: true,  checked: true,  tracked: true,  listStore: "BJ's Club" },
+    { id: 'c', name: 'Limes',   onList: true,  checked: false, tracked: true,  listStore: 'Hannaford' },
+    { id: 'd', name: 'Foil',    onList: false, checked: true,  tracked: true,  listStore: 'Hannaford' }
+  ];
+  const t = Store.tripItems(items, 'Hannaford');
+  assertEqual(t.map((i) => i.id).join(','), 'a', 'only the checked Hannaford item');
+  assertEqual(Store.tripItems(items, "BJ's Club").map((i) => i.id).join(','), 'b');
+});
+
+test('tripItems agrees with completeTrip about what a trip touches', () => {
+  // The bug: the dialog listed every checked item in the household and invited
+  // a price for each, while completeTrip only ever restocked the current list.
+  // A price typed against an out-of-list row was silently dropped. These two
+  // must not be allowed to disagree again.
+  const items = [
+    { id: 'a', name: 'Milk',     onList: true, checked: true, tracked: true, listStore: 'Hannaford', stock: 0, listQty: 1, prices: [] },
+    { id: 'b', name: 'Icecream', onList: true, checked: true, tracked: true, listStore: "BJ's Club", stock: 0, listQty: 1, prices: [] }
+  ];
+  const offered = Store.tripItems(items, 'Hannaford').map((i) => i.id);
+  const after = Store.completeTrip(items, null, 'Hannaford');
+  const restocked = after.filter((i) => i.stock > 0).map((i) => i.id);
+  assertEqual(offered.join(','), restocked.join(','), 'offered exactly what was restocked');
+  // And the other list is untouched: still on, still checked.
+  const bj = after.find((i) => i.id === 'b');
+  assertEqual(bj.onList && bj.checked, true, "BJ's item survives the Hannaford trip");
+});
+
+test('tripItems with no list named falls back to everything', () => {
+  // Matches completeTrip's own `!listName` branch, so the two stay in step for
+  // a pre-per-store-lists device that has no current list at all.
+  const items = [
+    { id: 'a', onList: true, checked: true, tracked: true, listStore: 'Hannaford' },
+    { id: 'b', onList: true, checked: true, tracked: true, listStore: "BJ's Club" }
+  ];
+  assertEqual(Store.tripItems(items, '').length, 2);
+});
+
+// ---- fresh install detection ----
+
+test('firstBootDefaults does not call a signed-in device a fresh install', () => {
+  // The bug that reordered a real household's lists. A device that is signed
+  // in and has just had its local storage cleared holds zero items at the
+  // moment this runs, because the first pull has not landed yet. Calling that
+  // "fresh" invented a Groceries list, persisted it as roster[0], and left the
+  // real lists to arrive afterwards and sort in alphabetically behind it.
+  const d = Store.firstBootDefaults([], true);
+  assertEqual(d.fresh, false);
+  assertEqual(d.roster[0], Store.MIGRATED_LIST, 'keeps the migrating device default');
+  assertEqual(d.recipesLink, true, 'and does not strip the owner\'s recipes link');
+  assertEqual(d.firstRunSeen, true, 'and does not show them a how-it-works card');
+});
+
+test('firstBootDefaults still treats a genuinely new install as fresh', () => {
+  const d = Store.firstBootDefaults([], false);
+  assertEqual(d.fresh, true);
+  assertEqual(d.roster[0], Store.DEFAULT_LIST);
+  assertEqual(d.recipesLink, false);
+  assertEqual(d.firstRunSeen, false);
+});
+
+test('firstBootDefaults treats items as proof of a migration either way', () => {
+  const items = [{ id: 'a', onList: true, listStore: '' }];
+  assertEqual(Store.firstBootDefaults(items, false).fresh, false);
+  assertEqual(Store.firstBootDefaults(items, true).fresh, false);
+});
+
 // ---- account deletion ----
 
 test('confirmsDeletion forgives case and space, and nothing else', () => {
