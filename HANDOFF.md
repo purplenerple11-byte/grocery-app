@@ -205,7 +205,7 @@ assets/sync-config.js      Supabase URL + publishable key (public by design)
 supabase/schema.sql        tables, RLS policies, RPCs — paste into the SQL editor
                            ⚠ a RECORD, not a migration. Editing it changes
                            nothing until someone runs it. See "schema drift".
-tests/store.test.js        184 tests, all passing (incl. sync reconciliation)
+tests/store.test.js        191 tests, all passing (incl. sync reconciliation)
 PRODUCT.md                 durable product truth (users, mechanism, constraints)
 STYLE_GUIDE.md             the house visual system (source of truth for look)
 docs/superpowers/specs/    the design spec — read this first
@@ -644,14 +644,51 @@ fetches it at install time, outside the page and outside the worker.
 commit C. It had already shipped in v62 — see V8d — and matched the design, so
 it was removed from the plan rather than rebuilt.
 
-**Next step:** commit B — in-app account deletion. Play requires an app with
-accounts to offer deletion in-app *and* at a web URL; the web half shipped with
-`privacy.html#delete`, the in-app half does not exist. It needs a
-`delete_my_account()` SECURITY DEFINER RPC that drops the membership, drops the
-household only if no members remain, then deletes the `auth.users` row — plus a
-typed-confirmation button that also clears local IndexedDB. The case worth
-testing: leaving a household that still has other members must not take their
-data with it.
+**V9b — in-app account deletion (shipped v66).** The other half of Play's
+deletion requirement; `privacy.html#delete` was only the web half. Before this
+the app offered "Sign out", which deliberately deletes nothing.
+
+⚠ **`delete_my_account()` does not exist on the live project until someone
+pastes it in.** `supabase/schema.sql` is a record, not a migration — same as
+every other RPC here. Until it is run, the button returns a 404 from PostgREST.
+
+⚠ **The order inside the function is not interchangeable with letting the
+cascades do it.** `household_members.user_id` cascades from `auth.users`, so
+deleting the user first drops the memberships before anything can count them,
+and every household this person belonged to then looks permanently occupied.
+Memberships first, orphan check on what is left, user last. A household with
+anyone still in it is theirs as much as it was this person's, so only an empty
+one is removed — its deletion cascades to items, meals and invites. The
+function returns that count, and `Store.deletionSummary` turns it into the one
+sentence worth saying out loud.
+
+⚠ **The client order is forced for the mirror-image reason.** Once the RPC
+returns, the access token refers to a user that no longer exists, so the RPC
+has to go first while the token is still worth something. `signOut` then fails
+against the server, which is expected rather than an error worth surfacing —
+hence the catch. The local wipe is last and unconditional. `DB.wipeAll` clears
+the three stores rather than calling `indexedDB.deleteDatabase`, which blocks
+on any open connection and is already the most reliable way to hang this app
+(gotcha #2).
+
+A typed word, not an OK button: this is the only action in the app with nothing
+behind it — no tombstone, no undo, and on a single-device household no other
+phone holding a copy. `Store.confirmsDeletion` forgives case and surrounding
+space; the word exists to interrupt a reflex, not to test typing.
+
+*A layout bug the new button exposed and did not cause.* `.dialog-note` carries
+a `-6px` top margin meant to be swallowed by the row-gap of the `dialog menu`
+it normally sits in. `#sync-body` is not a menu, so there is no gap to swallow
+it and the note rides up **into** the button above, first line clipped by the
+border. This had been patched once as a one-off for `#sync-diag`. It was never a
+one-off: `#sync-invite-out` and `#sync-attach-out` had it too and are hidden
+until used, so they carried it without ever showing it. One rule now covers all
+of them. Measured -6px before, +8px after, for the invite code as well.
+
+**Next step:** paste `delete_my_account()` into the Supabase SQL editor, then
+tap Delete account once on a throwaway anonymous account to confirm it end to
+end. Nothing in the repo can prove that half — `tests/fake-supabase.js` pins the
+client's call order and the local wipe, which is all a fake can pin.
 
 After that, commit D — listing assets and `docs/play-data-safety.md`.
 
