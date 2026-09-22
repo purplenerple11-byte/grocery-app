@@ -223,9 +223,18 @@ button { font-family: var(--sans); cursor: pointer; }
 #sync-body button { width: 100%; }
 #sync-body .btn-clay { border-radius: 6px !important; }
 #sync-panel button[disabled] { opacity: .6; }
-/* .dialog-note carries a -6px top margin to tuck under a heading. This one sits
-   under a row of buttons instead, where that pull collides with them — it is a
-   separate thought from the actions, so it gets separation rather than none. */
+/* .dialog-note carries a -6px top margin to tuck under a heading, and that pull
+   is meant to be swallowed by the row-gap of the `dialog menu` it normally sits
+   in. #sync-body is not a menu, so there is no gap to swallow it and the note
+   rides up INTO the button above — measured at a 6px overlap, with the note's
+   first line clipped by the button's border.
+
+   This was patched once as a one-off for #sync-diag. It is not a one-off: every
+   note in this panel that follows a button has it, including #sync-invite-out
+   and #sync-attach-out, which are hidden until used and so had the bug without
+   ever showing it. One rule for all of them. */
+#sync-body button + .dialog-note,
+#sync-body button + .sync-error { margin-top: 8px; }
 #sync-diag { margin: 10px 0 12px; font-variant-numeric: tabular-nums; }
 .sync-error { font-size: 13px; color: var(--out); margin-top: 8px; }
 .sync-error[hidden] { display: none; }

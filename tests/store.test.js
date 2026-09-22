@@ -1457,6 +1457,90 @@ test('resendWaitLabel rounds up so it never promises an early send', () => {
   assertEqual(Store.resendWaitLabel(29 * 60_000), '29 minutes');
 });
 
+// ---- account deletion ----
+
+test('confirmsDeletion forgives case and space, and nothing else', () => {
+  assertEqual(Store.confirmsDeletion('DELETE'), true);
+  assertEqual(Store.confirmsDeletion('delete'), true);
+  assertEqual(Store.confirmsDeletion('  Delete  '), true);
+  // The word exists to interrupt a reflex, so anything that is not the word
+  // has to fail — including the near misses a hurried person actually types.
+  assertEqual(Store.confirmsDeletion('DELET'), false);
+  assertEqual(Store.confirmsDeletion('delete account'), false);
+  assertEqual(Store.confirmsDeletion(''), false);
+  assertEqual(Store.confirmsDeletion(null), false);      // ask() cancel
+  assertEqual(Store.confirmsDeletion(undefined), false);
+});
+
+test('deletionSummary says out loud when a household went with the account', () => {
+  assertEqual(Store.deletionSummary(0).includes('still there'), true);
+  assertEqual(Store.deletionSummary(1).includes('deleted too'), true);
+  // The RPC returns a count; anything unparseable must read as "nothing else
+  // was destroyed" rather than inventing a loss.
+  assertEqual(Store.deletionSummary(null).includes('still there'), true);
+});
+
+test('deleteAccount calls the RPC, drops the session, and wipes the device', async () => {
+  await syncFixture();
+  await DB.put(Store.createItem('Milk'));
+  await DB.putSetting('displayName', 'Alex');
+  assertEqual((await DB.getAll()).length, 1, 'item is there before');
+
+  const removed = await Sync.deleteAccount();
+
+  assertEqual(removed, 0, 'no household was orphaned');
+  assertEqual(Sync.session, null);
+  assertEqual(Sync.householdId, null);
+  assertEqual(Sync.status, 'signed-out');
+  assertEqual(DB.syncing, false, 'the outbox must not keep collecting');
+  // "Delete my account" that leaves the list on the phone is a lie, and
+  // privacy.html promises otherwise in as many words. Settings too, not just
+  // the items.
+  assertEqual((await DB.getAll()).length, 0, 'items are gone');
+  assertEqual(await DB.getSetting('displayName', null), null, 'settings are gone');
+  resetSync();
+});
+
+test('deleteAccount reports a household that was removed with the account', async () => {
+  await syncFixture({ deletedHouseholds: 1 });
+  assertEqual(await Sync.deleteAccount(), 1);
+  resetSync();
+});
+
+test('deleteAccount hits the RPC before signing out, or the token is worthless', async () => {
+  // Once the user row is gone the access token refers to nothing, so the order
+  // is forced: RPC first, signOut second. Reversing it would send a deletion
+  // request with a dead token and fail every time.
+  const client = await syncFixture();
+  await Sync.deleteAccount();
+  const seq = client._calls.filter((c) => c.rpc === 'delete_my_account' || c.auth === 'signOut');
+  assertEqual(seq.length >= 2, true, 'both calls were made');
+  assertEqual(seq[0].rpc, 'delete_my_account', 'RPC went first');
+  assertEqual(seq[1].auth, 'signOut', 'signOut followed it');
+  resetSync();
+});
+
+test('a failed deletion leaves the account and the device untouched', async () => {
+  // The dangerous failure is a half-delete: local wiped, account alive, and
+  // no way back to it. The throw has to come before anything is destroyed.
+  await syncFixture({ rpcFail: { message: 'nope' } });
+  await DB.put(Store.createItem('Milk'));
+  let threw = false;
+  try { await Sync.deleteAccount(); } catch (e) { threw = true; }
+  assertEqual(threw, true, 'the error surfaced');
+  assertEqual((await DB.getAll()).length, 1, 'the list is still here');
+  assertEqual(Sync.session === null, false, 'still signed in');
+  resetSync();
+});
+
+test('deleteAccount refuses when there is no session to delete', async () => {
+  await joinFixture();
+  let threw = false;
+  try { await Sync.deleteAccount(); } catch (e) { threw = true; }
+  assertEqual(threw, true);
+  resetSync();
+});
+
 test('adopt=replace discards the joining device list instead of uploading it', async () => {
   const client = await joinFixture();
   await DB.replaceAllWithMeals([Store.createItem('My Own Milk', { id: 'mine' })], []);

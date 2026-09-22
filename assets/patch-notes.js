@@ -11,6 +11,13 @@
    an entry that says nothing teaches people to stop reading these. */
 const PATCH_NOTES = [
   {
+    date: '2026-09-22',
+    version: 66,
+    notes: [
+      'Settings \u2192 Sync now has Delete account. It removes your account and erases this device; if anyone else is in your household, their list stays put.'
+    ]
+  },
+  {
     date: '2026-09-18',
     version: 65,
     notes: [

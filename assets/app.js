@@ -2262,7 +2262,11 @@ function renderSyncPanel(s) {
     <button id="sync-signout-btn">Sign out</button>
     <p class="sync-error" id="sync-error" hidden></p>
     <p class="dialog-note" id="sync-diag" hidden></p>
-    <button id="sync-report-btn">Copy sync report</button>`;
+    <button id="sync-report-btn">Copy sync report</button>
+    <button id="sync-delete-btn" class="btn-danger">Delete account</button>
+    <p class="dialog-note">Signing out leaves everything where it is. Deleting
+      removes your account and wipes this device. If anyone else is in your
+      household, their list stays.</p>`;
   fillSyncDiag();
 }
 
@@ -2479,6 +2483,30 @@ document.getElementById('settings-dialog').addEventListener('click', async (e) =
       await Sync.signOut();
     } else if (id === 'sync-report-btn') {
       await copySyncReport();
+    } else if (id === 'sync-delete-btn') {
+      /* A typed word, not an OK button. This is the only action in the app
+         with nothing behind it — no tombstone, no undo, and on a single-device
+         household no other phone holding a copy. `ask` with a `value` returns
+         a string or null, so a cancel and an empty box are both falsy here. */
+      const typed = await ask({
+        title: 'Delete your account?',
+        note: 'This cannot be undone. Your account is removed, and everything on this device is erased. Anyone else in your household keeps their list.',
+        label: `Type ${Store.DELETE_CONFIRM_WORD} to confirm`,
+        value: '',
+        placeholder: Store.DELETE_CONFIRM_WORD,
+        confirmLabel: 'Delete account',
+        danger: true
+      });
+      if (!Store.confirmsDeletion(typed)) return;
+      busy(e.target, 'Deleting…');
+      const households = await Sync.deleteAccount();
+      /* The panel re-renders from the signed-out branch on its own, via the
+         status change deleteAccount fires. Reload rather than re-render the
+         list: `state` still holds every item that was just erased from the
+         database, and rebuilding that from scratch is one line against a
+         screenful of careful re-syncing. */
+      showBanner(Store.deletionSummary(households));
+      setTimeout(() => location.reload(), 1500);
     }
   } catch (err) {
     showSyncError(err.message || 'Sync action failed.');

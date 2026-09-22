@@ -73,6 +73,30 @@ const Store = {
      not the same one. 'signin' means you are still signed out. 'attach' means
      you are signed in but the identity is still browser-bound — the thing
      attaching an email exists to fix. */
+  /* The word a typed confirmation has to match before an account is deleted.
+
+     A typed word rather than an OK button because this is the one action in
+     the app with nothing behind it: no tombstone, no undo, no other device
+     holding a copy. Case and surrounding space are forgiven — the point is to
+     interrupt a reflex, not to test typing. */
+  DELETE_CONFIRM_WORD: 'DELETE',
+
+  confirmsDeletion(typed) {
+    return String(typed == null ? '' : typed).trim().toUpperCase()
+      === Store.DELETE_CONFIRM_WORD;
+  },
+
+  /* What to tell someone once the account is gone. `households` is the count
+     the RPC returns: how many households had nobody left in them and were
+     removed too. Anything above zero is worth saying out loud, because it is
+     the part that took data with it. */
+  deletionSummary(households) {
+    const n = Number(households) || 0;
+    return n > 0
+      ? 'Account deleted. Your household had no one else in it, so it was deleted too.'
+      : 'Account deleted. Your household is still there for everyone else in it.';
+  },
+
   pendingEmail(pending, now) {
     const email = (pending && pending.email) || '';
     if (!email) return { show: false, email: '', kind: '', canResend: false, waitMs: 0 };
@@ -1049,6 +1073,29 @@ const DB = {
   async delete(id) {
     if (!DB.persistent) { DB._mem.delete(id); return; }
     await DB._tx('readwrite', (store) => store.delete(id));
+  },
+
+  /* Empty every store. Used by account deletion, which promises the device is
+     left with nothing — privacy.html says so in as many words, so this clears
+     settings too, not just the items.
+
+     Deliberately clears the three stores rather than calling
+     indexedDB.deleteDatabase: a delete blocks until every connection closes,
+     and a second tab holding one open is already the most reliable way to hang
+     this app (gotcha #2). Clearing needs no such cooperation. */
+  async wipeAll() {
+    if (!DB.persistent) {
+      DB._mem.clear(); DB._memSettings.clear(); DB._memOutbox.clear(); return;
+    }
+    await new Promise((resolve, reject) => {
+      const tx = DB._db.transaction(['items', 'settings', 'outbox'], 'readwrite');
+      tx.objectStore('items').clear();
+      tx.objectStore('settings').clear();
+      tx.objectStore('outbox').clear();
+      tx.oncomplete = resolve;
+      tx.onerror = () => reject(tx.error);
+      tx.onabort = () => reject(tx.error);
+    });
   },
 
   /* ---- Outbox ----

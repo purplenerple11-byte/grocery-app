@@ -254,11 +254,53 @@ begin
   return inv.household_id;
 end $$;
 
+-- Google Play requires an app that lets people create accounts to offer
+-- deletion from inside the app AND at a public web URL. privacy.html#delete is
+-- the web half; this is the engine behind the in-app half.
+--
+-- Order matters and is not interchangeable with letting the cascades do it.
+-- `household_members.user_id` cascades from auth.users, so deleting the user
+-- first would drop the memberships before anything could count them, and every
+-- household this person belonged to would look occupied forever. Memberships
+-- go first, the orphan check runs on what is left, and the user goes last.
+--
+-- A household with other members in it is THEIRS as much as it was this
+-- person's. Deleting it would take a shared list away from people who did not
+-- ask for that, so only a household with nobody left is removed. Its deletion
+-- cascades to items, meals and invites.
+create or replace function public.delete_my_account()
+returns integer language plpgsql security definer
+set search_path = public, pg_temp as $$
+declare uid uuid := auth.uid(); hids uuid[]; gone integer;
+begin
+  if uid is null then raise exception 'not authenticated'; end if;
+
+  select coalesce(array_agg(household_id), '{}')
+    into hids from public.household_members where user_id = uid;
+
+  delete from public.household_members where user_id = uid;
+
+  with orphaned as (
+    delete from public.households h
+     where h.id = any(hids)
+       and not exists (select 1 from public.household_members m
+                        where m.household_id = h.id)
+    returning 1
+  )
+  select count(*) into gone from orphaned;
+
+  delete from auth.users where id = uid;
+
+  return gone;      -- households removed with the account; 0 means all survive
+end $$;
+
 revoke execute on function public.my_household(), public.ensure_household(),
-                            public.create_invite(), public.redeem_invite(text)
+                            public.create_invite(), public.redeem_invite(text),
+                            public.delete_my_account()
   from public, anon;
 grant  execute on function public.my_household(), public.ensure_household(),
-                            public.create_invite(), public.redeem_invite(text)
+                            public.create_invite(), public.redeem_invite(text),
+                            public.delete_my_account()
   to authenticated;
 
 -- ---------------------------------------------------------- keepalive ------

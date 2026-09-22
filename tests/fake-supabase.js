@@ -5,7 +5,7 @@
 /* `fail` breaks everything; `pushFail` breaks ONLY upserts, which is the shape
    of the real 2026-08-05 outage — a column missing server-side made every
    write 400 while reads kept returning 200. */
-function makeFakeSupabase({ items = [], meals = [], households = [], household = 'h1', session = { user: { id: 'u1', email: 'a@b.c' } }, fail = null, pushFail = null, anonDisabled = false, rpcFail = null, updateUserFail = null } = {}) {
+function makeFakeSupabase({ items = [], meals = [], households = [], household = 'h1', session = { user: { id: 'u1', email: 'a@b.c' } }, fail = null, pushFail = null, anonDisabled = false, rpcFail = null, updateUserFail = null, deletedHouseholds = 0 } = {}) {
   const tables = { items: items.slice(), meals: meals.slice(), households: households.slice() };
   const calls = [];
 
@@ -49,12 +49,15 @@ function makeFakeSupabase({ items = [], meals = [], households = [], household =
         // stays unconfirmed until the link is opened.
         return { data: { user: { id: 'anon-1', new_email: patch.email } }, error: null };
       },
-      async signOut() { return { error: null }; }
+      async signOut() { calls.push({ auth: 'signOut' }); return { error: null }; }
     },
     async rpc(name) {
       calls.push({ rpc: name });
       if (rpcFail) return { data: null, error: rpcFail };
       if (fail) return { data: null, error: fail };
+      // The household RPCs all answer with a household id; delete_my_account
+      // answers with a COUNT, so it cannot share the default.
+      if (name === 'delete_my_account') return { data: deletedHouseholds, error: null };
       return { data: household, error: null };
     },
     from(table) {

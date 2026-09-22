@@ -278,6 +278,40 @@ const Sync = {
     return clean;
   },
 
+  /* Delete the account, then leave the device with nothing.
+
+     Play requires an app with accounts to offer deletion in-app as well as at
+     a web URL, and "Sign out" is not that — it deliberately leaves everything
+     where it is.
+
+     The order is forced. Once `delete_my_account` returns, the user row is
+     gone and the access token in memory refers to nothing, so the RPC has to
+     come first while the token is still worth something. signOut then almost
+     certainly fails against the server for exactly that reason, which is not
+     an error worth surfacing: the session is unusable either way, and the
+     local half of signOut is what actually matters here. Hence the catch.
+
+     The local wipe comes last and is not conditional. A "delete my account"
+     that leaves the list sitting on the phone is a lie, and privacy.html
+     promises otherwise in as many words.
+
+     Returns the number of households removed along with the account — 0 when
+     every household this person belonged to still has somebody in it. */
+  async deleteAccount() {
+    if (!Sync.session) throw new Error('Not signed in.');
+    const { data, error } = await Sync.client.rpc('delete_my_account');
+    if (error) throw error;
+
+    await Sync.client.auth.signOut().catch(() => {});
+    Sync.session = null;
+    Sync.householdId = null;
+    DB.syncing = false;
+    Sync._set('signed-out');
+
+    await DB.wipeAll();
+    return Number(data) || 0;
+  },
+
   async redeemInvite(code) {
     const clean = String(code || '').replace(/[^0-9A-Za-z]/g, '').toUpperCase();
     if (clean.length !== 10) throw new Error('An invite code is 10 characters.');
