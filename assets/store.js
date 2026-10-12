@@ -242,6 +242,31 @@ const Store = {
 
   /* Returns the neighbour, or null at either end — the caller turns a null
      at the far end into the "+ New list" card. Deliberately does not wrap. */
+  /* ── Scrubbing through lists ────────────────────────────────────────────
+     One drag can step through several lists. The first step costs `first`
+     px — the same threshold a single swipe always had, so a short swipe
+     still moves exactly one list — and each further `step` px buys one more.
+     Swiping left (negative dx) walks forward through the roster. */
+  scrubSteps(dx, first = 55, step = 55) {
+    const d = Math.abs(dx);
+    if (!(d >= first)) return 0;              // also swallows NaN
+    const n = 1 + Math.floor((d - first) / step);
+    return dx < 0 ? n : -n;
+  },
+
+  /* The lane `steps` away from `current`, clamped at both ends: dragging past
+     the last list parks on it rather than doing nothing, which is what lets a
+     long sweep mean "take me to the end". Null only when `current` is not in
+     the roster at all. Lanes may be objects (the create card) — indexOf
+     matches them by identity. */
+  listAtOffset(roster, current, steps) {
+    const list = Array.isArray(roster) ? roster : [];
+    const i = list.indexOf(current);
+    if (i === -1) return null;
+    const j = Math.max(0, Math.min(list.length - 1, i + (Number(steps) || 0)));
+    return list[j];
+  },
+
   nextList(roster, current, dir) {
     const list = Array.isArray(roster) ? roster : [];
     const i = list.indexOf(current);

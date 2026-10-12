@@ -129,7 +129,11 @@ button { font-family: var(--sans); cursor: pointer; }
 .autocomplete-item:last-child { border-bottom: none; }
 .autocomplete-stock { font-size: 11px; color: var(--muted); }
 
-#list { flex: 1; padding: 4px 16px 140px; overflow-y: auto; }
+#list { flex: 1; padding: 4px 16px 140px; overflow-y: auto; transition: opacity .15s ease; }
+/* Mid-scrub the header already names another list, but these rows are still
+   the one you started on. Dimming says "not this one" without hiding where
+   you came from. */
+#list.scrubbing { opacity: .35; }
 .cat { font-size: 11px; font-weight: 600; color: var(--muted); text-transform: uppercase; letter-spacing: .08em; margin: 14px 2px 6px; }
 .row {
   display: flex; align-items: center; gap: 11px; background: var(--surface);

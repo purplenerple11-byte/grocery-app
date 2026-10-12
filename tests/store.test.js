@@ -2096,3 +2096,30 @@ test('attributionState stays quiet when there is nothing to announce', () => {
     'checking an item bumps updatedAt; that is not an add');
   assertEqual(Store.attributionState(attrItem({ updatedAt: 0 }), 1000), null, 'never stamped');
 });
+
+/* ---- Scrubbing through lists ---- */
+
+test('scrubSteps: a short swipe is still exactly one list', () => {
+  assertEqual(Store.scrubSteps(-30), 0, 'under the threshold does nothing');
+  assertEqual(Store.scrubSteps(-55), 1, 'the old single-swipe threshold is one step');
+  assertEqual(Store.scrubSteps(-109), 1, 'still one until the next step is earned');
+  assertEqual(Store.scrubSteps(-110), 2);
+  assertEqual(Store.scrubSteps(-220), 4);
+});
+
+test('scrubSteps: swiping right walks backwards', () => {
+  assertEqual(Store.scrubSteps(55), -1);
+  assertEqual(Store.scrubSteps(165), -3);
+  assertEqual(Store.scrubSteps(NaN), 0);
+});
+
+test('listAtOffset steps through lanes and parks at the ends', () => {
+  const NEW = { isNewListLane: true };          // the create card is an object lane
+  const lanes = ['Hannaford', "BJ's Club", 'Target', NEW];
+  assertEqual(Store.listAtOffset(lanes, 'Hannaford', 2), 'Target');
+  assertEqual(Store.listAtOffset(lanes, 'Target', -2), 'Hannaford');
+  assertEqual(Store.listAtOffset(lanes, 'Hannaford', 0), 'Hannaford');
+  assert(Store.listAtOffset(lanes, 'Hannaford', 99) === NEW, 'a long sweep parks on the last lane');
+  assertEqual(Store.listAtOffset(lanes, "BJ's Club", -99), 'Hannaford', 'and on the first going back');
+  assertEqual(Store.listAtOffset(lanes, 'Gone', 1), null, 'unknown current list');
+});

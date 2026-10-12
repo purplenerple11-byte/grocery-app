@@ -11,6 +11,13 @@
    an entry that says nothing teaches people to stop reading these. */
 const PATCH_NOTES = [
   {
+    date: '2026-10-12',
+    version: 68,
+    notes: [
+      'Swipe across the title and keep going to move through several lists in one go. The name and count change as you pass each list, your phone ticks at every step, and lifting your finger takes you to the one you stopped on. A short swipe still moves one list.'
+    ]
+  },
+  {
     date: '2026-09-22',
     version: 67,
     notes: [

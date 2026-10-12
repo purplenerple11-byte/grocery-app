@@ -181,25 +181,33 @@ async function commitAll(items, meals, { replace = false } = {}) {
   }
 }
 
-function renderList() {
-  const listEl = document.getElementById('list');
-  const creating = state.currentList === NEW_LIST;
-  const onList = creating ? [] : Store.itemsForList(state.items, state.currentList);
+/* The title, count and page dots for `lane`. Split out of renderList so a
+   scrub can show the list you would land on without rebuilding the body —
+   the body only changes once, when the finger lifts. */
+function renderListHeader(lane) {
+  const creating = lane === NEW_LIST;
+  const onList = creating ? [] : Store.itemsForList(state.items, lane);
   const checkedCount = onList.filter((it) => it.checked).length;
   document.getElementById('list-store').textContent =
-    creating ? '- new list' : (state.currentList ? `- ${state.currentList}` : '');
+    creating ? '- new list' : (lane ? `- ${lane}` : '');
   document.getElementById('list-sub').textContent = creating
     ? 'Swipe back to cancel'
     : (onList.length ? `${onList.length} item${onList.length === 1 ? '' : 's'} · ${checkedCount} checked` : '');
-  document.getElementById('complete-trip').hidden = creating || checkedCount === 0;
-  // Nothing to add an item to until the list has a name.
-  document.getElementById('add-form').hidden = creating;
 
   /* One dot says nothing — but the create card counts as a lane, so a single
      real list still gets dots the moment the card is reachable. */
   document.getElementById('list-dots').innerHTML = listLanes()
-    .map((n) => `<i class="${n === NEW_LIST ? 'add' : ''}${n === state.currentList ? ' on' : ''}"></i>`)
+    .map((n) => `<i class="${n === NEW_LIST ? 'add' : ''}${n === lane ? ' on' : ''}"></i>`)
     .join('');
+  return { creating, onList, checkedCount };
+}
+
+function renderList() {
+  const listEl = document.getElementById('list');
+  const { creating, onList, checkedCount } = renderListHeader(state.currentList);
+  document.getElementById('complete-trip').hidden = creating || checkedCount === 0;
+  // Nothing to add an item to until the list has a name.
+  document.getElementById('add-form').hidden = creating;
 
   if (creating) {
     listEl.innerHTML = `
@@ -1076,18 +1084,24 @@ function onLongPress(container, selector, handler) {
   };
 
   window.switchList = function (dir) {
-    if (animating) return;
     /* Swiping onto the create card is an ordinary lane change, so it gets the
        same inhale animation as any other — the card drops out of the block
        exactly the way a list does. Past the first list is still nothing. */
     const next = Store.nextList(listLanes(), state.currentList, dir);
-    if (next === null) return;
+    if (next !== null) switchTo(next, dir);
+  };
 
+  /* `titleShown`: a scrub has already put the destination's name in the
+     block, so sliding the label out and back in would replay a change the
+     user has been watching happen under their finger. */
+  function switchTo(next, dir, { titleShown = false } = {}) {
+    if (animating || next === state.currentList) return;
     const listEl = document.getElementById('list');
 
     if (reduced()) { setCurrentList(next); return; }
 
     animating = true;
+    const titles = titleShown ? [] : titleParts();
     const out = parts(listEl);
     const n = out.length;
     const outStep = n > 1 ? Math.min(OUT_STAGGER, STAGGER_CAP / (n - 1)) : 0;
@@ -1109,7 +1123,7 @@ function onLongPress(container, selector, handler) {
       el.style.opacity = '0';
     });
 
-    titleParts().forEach((el) => {
+    titles.forEach((el) => {
       el.style.transition =
         `transform ${OUT_MS}ms ${OUT_EASE}, opacity ${Math.round(OUT_MS * 0.6)}ms linear`;
       el.style.transform = `translateX(${-dir * NAME_SHIFT}px)`;
@@ -1140,7 +1154,7 @@ function onLongPress(container, selector, handler) {
          already sitting at opacity 0 by this point, so an rAF that never
          fires leaves the list permanently invisible rather than merely
          un-animated. offsetHeight cannot fail that way. */
-      titleParts().forEach((el) => {
+      titles.forEach((el) => {
         el.style.transition = 'none';
         el.style.transform = `translateX(${dir * NAME_SHIFT}px)`;
         el.style.opacity = '0';
@@ -1148,7 +1162,7 @@ function onLongPress(container, selector, handler) {
 
       void listEl.offsetHeight;
 
-      titleParts().forEach((el) => {
+      titles.forEach((el) => {
         el.style.transition =
           `transform ${IN_MS}ms ${IN_EASE}, opacity ${Math.round(IN_MS * 0.6)}ms linear`;
         el.style.transform = '';
@@ -1165,11 +1179,11 @@ function onLongPress(container, selector, handler) {
 
       setTimeout(() => {
         inn.forEach((el) => { el.style.transition = ''; el.style.transform = ''; el.style.opacity = ''; });
-        titleParts().forEach((el) => { el.style.transition = ''; el.style.transform = ''; el.style.opacity = ''; });
+        titles.forEach((el) => { el.style.transition = ''; el.style.transform = ''; el.style.opacity = ''; });
         animating = false;
       }, IN_MS + (m - 1) * inStep + 40);
     }, OUT_MS + (n - 1) * outStep);
-  };
+  }
 
   /* Trackpad momentum keeps firing deltaX long after the fingers lift, so
      one flick would otherwise fire three switches. Accumulate to the
@@ -1186,22 +1200,63 @@ function onLongPress(container, selector, handler) {
     if (Math.abs(acc) > SWIPE_PX) { locked = true; arm(false); switchList(acc > 0 ? 1 : -1); }
   }, { passive: false });
 
-  let x0 = null, fired = false;
+  /* ── Scrub: one drag, as many lists as you like ───────────────────────
+     A swipe used to fire once at SWIPE_PX and then lock until the inhale
+     finished, so reaching the fourth list meant four swipes and four waits.
+     Now the drag keeps counting: every further STEP_PX moves the target one
+     more list, and the block's name, count and dots follow it live. Nothing
+     heavy happens per step — the inhale plays once, on lift, straight into
+     wherever you stopped. A short swipe is still exactly one list.
+
+     Each step ticks the phone's haptics (Android; iOS has no web vibration)
+     so the steps can be felt without watching the label. The body dims while
+     scrubbing because it is still showing the list you started on. */
+  const STEP_PX = 55;
+  const listBody = () => document.getElementById('list');
+  let x0 = null, target = null, startDir = 0;
+
+  function preview(lane) {
+    renderListHeader(lane);
+    listBody().classList.toggle('scrubbing', lane !== state.currentList);
+    try { navigator.vibrate && navigator.vibrate(6); } catch (_) {}
+  }
+
   bar.addEventListener('pointerdown', (e) => {
     if (e.target.closest('button, a')) return;   // the gear and Recipes still work
-    x0 = e.clientX; fired = false;
+    if (animating) return;
+    x0 = e.clientX; target = state.currentList; startDir = 0;
     try { bar.setPointerCapture(e.pointerId); } catch (_) {}
   });
   bar.addEventListener('pointermove', (e) => {
-    if (x0 === null || fired) return;
+    if (x0 === null) return;
     const dx = e.clientX - x0;
     arm(Math.abs(dx) > 10);
-    if (Math.abs(dx) > SWIPE_PX) { fired = true; arm(false); switchList(dx < 0 ? 1 : -1); }
+    const steps = Store.scrubSteps(dx, SWIPE_PX, STEP_PX);
+    const lane = Store.listAtOffset(listLanes(), state.currentList, steps);
+    if (lane === null || lane === target) return;
+    target = lane;
+    if (steps) startDir = steps > 0 ? 1 : -1;
+    preview(lane);
   });
-  const end = () => { x0 = null; fired = false; arm(false); };
-  bar.addEventListener('pointerup', end);
-  bar.addEventListener('pointercancel', end);
-  bar.addEventListener('pointerleave', end);
+
+  /* Lift commits; a cancel (the OS taking the gesture) puts the block back.
+     pointerleave also lands here under pointer capture, so both are
+     idempotent — whichever arrives second finds x0 already cleared. */
+  function finish(commit) {
+    if (x0 === null) return;
+    const lane = target;
+    x0 = null; target = null;
+    arm(false);
+    listBody().classList.remove('scrubbing');
+    if (commit && lane !== null && lane !== state.currentList) {
+      switchTo(lane, startDir || 1, { titleShown: true });
+    } else {
+      renderListHeader(state.currentList);
+    }
+  }
+  bar.addEventListener('pointerup', () => finish(true));
+  bar.addEventListener('pointercancel', () => finish(false));
+  bar.addEventListener('pointerleave', () => finish(true));
 
   window.__setListAnimating = (v) => { animating = v; };  // Task 7 uses this
 })();
