@@ -254,6 +254,26 @@ const Store = {
     return dx < 0 ? n : -n;
   },
 
+  /* Step size, fitted to the roster rather than fixed. The goal is that a
+     swipe starting mid-screen can reach the far end of the lanes before the
+     finger runs out of screen — a fixed step can't promise that, since it
+     is fine for four lists and too long for nine.
+
+     The budget is 42% of the width, not 50%: a thumb starting "about the
+     middle" is rarely exactly there, and nobody drags to the last pixel.
+     The first step gets 4px extra so a tap-with-a-wobble does not change
+     lists. Steps never go below `min`, the point past which they stop being
+     separate detents and become a blur; with very many lists that floor
+     wins and the far end needs a slightly longer drag. Nor above `max`:
+     with only a few lists the budget would allow long steps, but those read
+     as sluggish, so they are capped a little under the old fixed 40px. */
+  scrubStepSize(laneCount, width, { min = 20, max = 34 } = {}) {
+    const steps = Math.max(1, (Number(laneCount) || 0) - 1);
+    const budget = (Number(width) || 0) * 0.42;
+    const step = Math.max(min, Math.min(max, Math.floor((budget - 4) / steps)));
+    return { first: step + 4, step };
+  },
+
   /* The lane `steps` away from `current`, clamped at both ends: dragging past
      the last list parks on it rather than doing nothing, which is what lets a
      long sweep mean "take me to the end". Null only when `current` is not in

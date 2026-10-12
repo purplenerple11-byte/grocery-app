@@ -2123,3 +2123,22 @@ test('listAtOffset steps through lanes and parks at the ends', () => {
   assertEqual(Store.listAtOffset(lanes, "BJ's Club", -99), 'Hannaford', 'and on the first going back');
   assertEqual(Store.listAtOffset(lanes, 'Gone', 1), null, 'unknown current list');
 });
+
+test('scrubStepSize: from mid-screen, one swipe reaches the far end', () => {
+  // The promise, checked directly: starting at the middle, travel of 42% of
+  // the width must cover every step to the last lane.
+  for (const lanes of [3, 5, 6, 8]) {
+    for (const width of [360, 412, 430]) {
+      const { first, step } = Store.scrubStepSize(lanes, width);
+      const reach = Store.scrubSteps(-(width * 0.42), first, step);
+      assert(reach >= lanes - 1, `${lanes} lanes @${width}px reaches ${reach} of ${lanes - 1}`);
+    }
+  }
+});
+
+test('scrubStepSize: steps stay between the floor and the cap', () => {
+  assertEqual(Store.scrubStepSize(2, 412).step, 34, 'few lists are capped, not given huge steps');
+  assertEqual(Store.scrubStepSize(30, 412).step, 20, 'very many lists hit the floor');
+  const s = Store.scrubStepSize(6, 412);
+  assertEqual(s.first, s.step + 4, 'first step is a little longer, so a wobble is not a swipe');
+});

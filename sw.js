@@ -1,4 +1,4 @@
-const CACHE = 'grocery-v69';
+const CACHE = 'grocery-v70';
 const ASSETS = [
   './', './index.html', './manifest.json',
   // A standalone page, so it needs its own entry — the app shell does not

@@ -1220,8 +1220,8 @@ function onLongPress(container, selector, handler) {
   /* ── Scrub: one drag, as many lists as you like ───────────────────────
      A swipe used to fire once and then lock until the inhale finished, so
      reaching the fourth list meant four swipes and four waits. Now the drag
-     keeps counting: past the first SCRUB_FIRST px, every STEP_PX moves the
-     target one more list.
+     keeps counting: past the first step, every further step moves the target
+     one more list.
 
      The body previews the list under the finger, not just the label: each
      step slides that list's rows in from the side you are swiping toward, so
@@ -1234,7 +1234,10 @@ function onLongPress(container, selector, handler) {
      Lifting lands where the preview already is, so there is no inhale on a
      scrub — replaying the change you just watched would only delay it. A
      cancel puts the original list back. */
-  const SCRUB_FIRST = 45, STEP_PX = 40;
+  /* Fitted per gesture, from the current lane count and screen width — see
+     Store.scrubStepSize. Measured at pointerdown so a rotated phone or a
+     newly added list is picked up on the next swipe. */
+  let sizing = { first: 45, step: 40 };
   const listBody = () => document.getElementById('list');
   let x0 = null, target = null, scrubbed = false;
 
@@ -1259,13 +1262,14 @@ function onLongPress(container, selector, handler) {
     if (e.target.closest('button, a')) return;   // the gear and Recipes still work
     if (animating) return;
     x0 = e.clientX; target = state.currentList; scrubbed = false;
+    sizing = Store.scrubStepSize(listLanes().length, window.innerWidth);
     try { bar.setPointerCapture(e.pointerId); } catch (_) {}
   });
   bar.addEventListener('pointermove', (e) => {
     if (x0 === null) return;
     const dx = e.clientX - x0;
     arm(Math.abs(dx) > 10);
-    const steps = Store.scrubSteps(dx, SCRUB_FIRST, STEP_PX);
+    const steps = Store.scrubSteps(dx, sizing.first, sizing.step);
     const lane = Store.listAtOffset(listLanes(), state.currentList, steps);
     if (lane === null || lane === target) return;
     // Direction of THIS step, not of the whole drag — backing up mid-scrub

@@ -12,6 +12,13 @@
 const PATCH_NOTES = [
   {
     date: '2026-10-12',
+    version: 70,
+    notes: [
+      'Shorter steps when swiping between lists. The step size now adjusts to how many lists you have, so a swipe from the middle of the screen to the edge reaches your last list.'
+    ]
+  },
+  {
+    date: '2026-10-12',
     version: 69,
     notes: [
       'Swiping between lists now shows each list as you pass over it, not just its name. Empty lists show their name in large type so you can see where you are.',
