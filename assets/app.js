@@ -202,9 +202,26 @@ function renderListHeader(lane) {
   return { creating, onList, checkedCount };
 }
 
-function renderList() {
+/* `lane` defaults to the list you are on. A scrub passes the lane under the
+   finger with `preview` set: the body shows that list's rows so you can see
+   where you would land, but nothing that belongs to the list you are actually
+   on is touched — Complete trip and the add bar stay as they are, and an empty
+   or not-yet-created lane shows its name as a heading instead of the naming
+   form or the empty-state copy, which are for after you have landed. */
+function renderList(lane = state.currentList, { preview = false } = {}) {
   const listEl = document.getElementById('list');
-  const { creating, onList, checkedCount } = renderListHeader(state.currentList);
+  const { creating, onList, checkedCount } = renderListHeader(lane);
+
+  if (preview) {
+    listEl.innerHTML = onList.length && !creating
+      ? listRowsHtml(onList)
+      : `<div class="scrub-heading">
+           <h2>${creating ? '＋ New list' : escapeHtml(lane)}</h2>
+           <p>${creating ? 'Let go to name it' : 'Nothing on this list yet'}</p>
+         </div>`;
+    return;
+  }
+
   document.getElementById('complete-trip').hidden = creating || checkedCount === 0;
   // Nothing to add an item to until the list has a name.
   document.getElementById('add-form').hidden = creating;
@@ -225,7 +242,12 @@ function renderList() {
     return;
   }
 
-  listEl.innerHTML = Store.groupByCategory(onList).map(([cat, items]) => `
+  listEl.innerHTML = listRowsHtml(onList) || emptyListHtml();
+  scheduleAttributionFadeouts();
+}
+
+function listRowsHtml(onList) {
+  return Store.groupByCategory(onList).map(([cat, items]) => `
     <div class="cat">${escapeHtml(cat)}</div>
     ${items.map((it) => `
       <div class="row${it.checked ? ' done' : ''}${Store.hasEnough(it) ? ' have' : ''}" data-id="${it.id}">
@@ -244,9 +266,7 @@ function renderList() {
           <span class="qty">${it.listQty}</span>
           <button class="step-btn" data-action="qty-plus" aria-label="More">＋</button>
         </span>
-      </div>`).join('')}`).join('')
-    || emptyListHtml();
-  scheduleAttributionFadeouts();
+      </div>`).join('')}`).join('');
 }
 
 /* What an empty #list says. Two different emptinesses share this slot: a
@@ -1091,17 +1111,14 @@ function onLongPress(container, selector, handler) {
     if (next !== null) switchTo(next, dir);
   };
 
-  /* `titleShown`: a scrub has already put the destination's name in the
-     block, so sliding the label out and back in would replay a change the
-     user has been watching happen under their finger. */
-  function switchTo(next, dir, { titleShown = false } = {}) {
+  function switchTo(next, dir) {
     if (animating || next === state.currentList) return;
     const listEl = document.getElementById('list');
 
     if (reduced()) { setCurrentList(next); return; }
 
     animating = true;
-    const titles = titleShown ? [] : titleParts();
+    const titles = titleParts();
     const out = parts(listEl);
     const n = out.length;
     const outStep = n > 1 ? Math.min(OUT_STAGGER, STAGGER_CAP / (n - 1)) : 0;
@@ -1201,45 +1218,67 @@ function onLongPress(container, selector, handler) {
   }, { passive: false });
 
   /* ── Scrub: one drag, as many lists as you like ───────────────────────
-     A swipe used to fire once at SWIPE_PX and then lock until the inhale
-     finished, so reaching the fourth list meant four swipes and four waits.
-     Now the drag keeps counting: every further STEP_PX moves the target one
-     more list, and the block's name, count and dots follow it live. Nothing
-     heavy happens per step — the inhale plays once, on lift, straight into
-     wherever you stopped. A short swipe is still exactly one list.
+     A swipe used to fire once and then lock until the inhale finished, so
+     reaching the fourth list meant four swipes and four waits. Now the drag
+     keeps counting: past the first SCRUB_FIRST px, every STEP_PX moves the
+     target one more list.
 
-     Each step ticks the phone's haptics (Android; iOS has no web vibration)
-     so the steps can be felt without watching the label. The body dims while
-     scrubbing because it is still showing the list you started on. */
-  const STEP_PX = 55;
+     The body previews the list under the finger, not just the label: each
+     step slides that list's rows in from the side you are swiping toward, so
+     it is unmistakable that you are moving through lists rather than editing
+     the one you are on. An empty lane shows its name as a large heading in
+     place of rows — otherwise passing over two empty lists looks like nothing
+     happened. The dots grow for the duration, and each step ticks the phone's
+     haptics (Android; iOS has no web vibration).
+
+     Lifting lands where the preview already is, so there is no inhale on a
+     scrub — replaying the change you just watched would only delay it. A
+     cancel puts the original list back. */
+  const SCRUB_FIRST = 45, STEP_PX = 40;
   const listBody = () => document.getElementById('list');
-  let x0 = null, target = null, startDir = 0;
+  let x0 = null, target = null, scrubbed = false;
 
-  function preview(lane) {
-    renderListHeader(lane);
-    listBody().classList.toggle('scrubbing', lane !== state.currentList);
+  function settle(el, from) {
+    if (reduced() || !el.animate) return;
+    el.getAnimations().forEach((a) => a.cancel());
+    el.animate(from, { duration: 170, easing: 'cubic-bezier(.2, .8, .3, 1)' });
+  }
+
+  function preview(lane, dir) {
+    const el = listBody();
+    renderList(lane, { preview: true });
+    el.scrollTop = 0;
+    settle(el, [
+      { transform: `translateX(${dir * 36}px)`, opacity: 0.2 },
+      { transform: 'none', opacity: 1 }
+    ]);
     try { navigator.vibrate && navigator.vibrate(6); } catch (_) {}
   }
 
   bar.addEventListener('pointerdown', (e) => {
     if (e.target.closest('button, a')) return;   // the gear and Recipes still work
     if (animating) return;
-    x0 = e.clientX; target = state.currentList; startDir = 0;
+    x0 = e.clientX; target = state.currentList; scrubbed = false;
     try { bar.setPointerCapture(e.pointerId); } catch (_) {}
   });
   bar.addEventListener('pointermove', (e) => {
     if (x0 === null) return;
     const dx = e.clientX - x0;
     arm(Math.abs(dx) > 10);
-    const steps = Store.scrubSteps(dx, SWIPE_PX, STEP_PX);
+    const steps = Store.scrubSteps(dx, SCRUB_FIRST, STEP_PX);
     const lane = Store.listAtOffset(listLanes(), state.currentList, steps);
     if (lane === null || lane === target) return;
+    // Direction of THIS step, not of the whole drag — backing up mid-scrub
+    // slides the previous list in from the left, the way it would arrive.
+    const lanes = listLanes();
+    const dir = lanes.indexOf(lane) > lanes.indexOf(target) ? 1 : -1;
     target = lane;
-    if (steps) startDir = steps > 0 ? 1 : -1;
-    preview(lane);
+    scrubbed = true;
+    bar.classList.add('scrubbing');
+    preview(lane, dir);
   });
 
-  /* Lift commits; a cancel (the OS taking the gesture) puts the block back.
+  /* Lift commits; a cancel (the OS taking the gesture) puts the list back.
      pointerleave also lands here under pointer capture, so both are
      idempotent — whichever arrives second finds x0 already cleared. */
   function finish(commit) {
@@ -1247,11 +1286,13 @@ function onLongPress(container, selector, handler) {
     const lane = target;
     x0 = null; target = null;
     arm(false);
-    listBody().classList.remove('scrubbing');
+    bar.classList.remove('scrubbing');
+    if (!scrubbed) return;
     if (commit && lane !== null && lane !== state.currentList) {
-      switchTo(lane, startDir || 1, { titleShown: true });
+      setCurrentList(lane);                         // body already shows it
+      settle(listBody(), [{ opacity: 0.6 }, { opacity: 1 }]);
     } else {
-      renderListHeader(state.currentList);
+      renderList();                                 // back where you started
     }
   }
   bar.addEventListener('pointerup', () => finish(true));

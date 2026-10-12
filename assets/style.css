@@ -100,7 +100,11 @@ button { font-family: var(--sans); cursor: pointer; }
    does something else entirely. Grow the target without moving the text: a
    positioned pseudo-element takes the extra hits and costs no layout. */
 .appbar h1 em::after { content: ''; position: absolute; inset: -18px -14px; }
-.appbar .sub { font-size: 12px; color: var(--muted); grid-column: 1; margin-top: 6px; }
+/* min-height keeps the line's space when it is empty. An empty list has no
+   "N items · N checked", and without the reservation the header shrank by a
+   line — so scrubbing across a mix of empty and full lists bounced the add
+   bar up and down at every step. */
+.appbar .sub { font-size: 12px; color: var(--muted); grid-column: 1; margin-top: 6px; min-height: 1.25em; line-height: 1.25; }
 #list-dots { grid-column: 2 / -1; justify-self: end; align-self: center;
              display: flex; gap: 5px; margin-top: 6px; }
 #list-dots i { width: 5px; height: 5px; border-radius: 50%; background: var(--hairline); }
@@ -129,11 +133,20 @@ button { font-family: var(--sans); cursor: pointer; }
 .autocomplete-item:last-child { border-bottom: none; }
 .autocomplete-stock { font-size: 11px; color: var(--muted); }
 
-#list { flex: 1; padding: 4px 16px 140px; overflow-y: auto; transition: opacity .15s ease; }
-/* Mid-scrub the header already names another list, but these rows are still
-   the one you started on. Dimming says "not this one" without hiding where
-   you came from. */
-#list.scrubbing { opacity: .35; }
+#list { flex: 1; padding: 4px 16px 140px; overflow-y: auto; }
+/* What an empty lane looks like while you scrub past it. Without this, two
+   empty lists in a row produce identical blank bodies and the swipe looks
+   like it did nothing. Serif, because it is a name the user typed. */
+.scrub-heading { text-align: center; padding: 48px 12px 0; }
+.scrub-heading h2 {
+  font-family: var(--serif); font-weight: 400; font-size: 34px; line-height: 1.15;
+  color: var(--ink); overflow-wrap: anywhere;
+}
+.scrub-heading p { margin-top: 8px; font-size: 13px; color: var(--muted); }
+/* The dots grow while a scrub is under way — the one bit of chrome that says
+   "you are moving between lists" rather than "this is the list". */
+#list-dots i { transition: width .15s ease, height .15s ease; }
+.appbar.scrubbing #list-dots i { width: 8px; height: 8px; }
 .cat { font-size: 11px; font-weight: 600; color: var(--muted); text-transform: uppercase; letter-spacing: .08em; margin: 14px 2px 6px; }
 .row {
   display: flex; align-items: center; gap: 11px; background: var(--surface);
